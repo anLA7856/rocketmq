@@ -166,16 +166,27 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
     protected RemotingCommand msgCheck(final ChannelHandlerContext ctx,
         final SendMessageRequestHeader requestHeader, final RemotingCommand response) {
         if (!PermName.isWriteable(this.brokerController.getBrokerConfig().getBrokerPermission())
-            && this.brokerController.getTopicConfigManager().isOrderTopic(requestHeader.getTopic())) {
+            && this.brokerController.getTopicConfigManager().isOrderTopic(requestHeader.getTopic())) {  // 1. 检查是否有可写权限
             response.setCode(ResponseCode.NO_PERMISSION);
             response.setRemark("the broker[" + this.brokerController.getBrokerConfig().getBrokerIP1()
                 + "] sending message is forbidden");
             return response;
         }
 
-        if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {
+        if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {  // 校验该topic 是否可以发送，默认主题不能发送，仅仅提供路由查找。
             return response;
         }
+
+        /**
+         * 在NameServer段存储的配置信息，默认路径在${ROCKETMQ_HOME}/store/config/topic.json.
+         * order: 是否顺序消息
+         * perm: 权限码
+         * readQueueNums: 读队列数量
+         * writeQueueNums: 写队列数量
+         * topicName: 主题名称
+         * topicSysFlag: topic flag 当前版本暂为保留
+         * topicFilterType: 主题过滤方式，当前版本仅支持SINGLE_TAG
+         */
 
         TopicConfig topicConfig =
             this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
@@ -194,14 +205,14 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
                 requestHeader.getTopic(),
                 requestHeader.getDefaultTopic(),
                 RemotingHelper.parseChannelRemoteAddr(ctx.channel()),
-                requestHeader.getDefaultTopicQueueNums(), topicSysFlag);
+                requestHeader.getDefaultTopicQueueNums(), topicSysFlag);  // 给nameserver通知，创建一个topic。
 
             if (null == topicConfig) {
                 if (requestHeader.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
                     topicConfig =
                         this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(
                             requestHeader.getTopic(), 1, PermName.PERM_WRITE | PermName.PERM_READ,
-                            topicSysFlag);
+                            topicSysFlag);   // 再次尝试创建。
                 }
             }
 
@@ -212,7 +223,7 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
                 return response;
             }
         }
-
+        // 检查队列，如果队列码不合法，返回错误码
         int queueIdInt = requestHeader.getQueueId();
         int idValid = Math.max(topicConfig.getWriteQueueNums(), topicConfig.getReadQueueNums());
         if (queueIdInt >= idValid) {

@@ -69,18 +69,18 @@ public class RemotingCommand {
         }
     }
 
-    private int code;
+    private int code;  // 请求命令编码，命令类型 对应 ResponseCode 类
     private LanguageCode language = LanguageCode.JAVA;
-    private int version = 0;
-    private int opaque = requestId.getAndIncrement();
-    private int flag = 0;
-    private String remark;
-    private HashMap<String, String> extFields;
-    private transient CommandCustomHeader customHeader;
+    private int version = 0; // 版本号
+    private int opaque = requestId.getAndIncrement();   // 客户端请求序号
+    private int flag = 0;   // 标记，倒数第一位表示请求类型。 0 请求，1 返回。倒数第二位，1: 表示oneway
+    private String remark;   // 描述
+    private HashMap<String, String> extFields;   // 扩展属性
+    private transient CommandCustomHeader customHeader;   // 每个请求对应的请求头信息
 
     private SerializeType serializeTypeCurrentRPC = serializeTypeConfigInThisServer;
 
-    private transient byte[] body;
+    private transient byte[] body;   // 消息体内容
 
     protected RemotingCommand() {
     }
@@ -107,20 +107,20 @@ public class RemotingCommand {
     }
 
     public static RemotingCommand createResponseCommand(Class<? extends CommandCustomHeader> classHeader) {
-        return createResponseCommand(RemotingSysResponseCode.SYSTEM_ERROR, "not set any response code", classHeader);
+        return createResponseCommand(RemotingSysResponseCode.SYSTEM_ERROR, "not set any response code", classHeader);   // 创建RemotingComand
     }
 
     public static RemotingCommand createResponseCommand(int code, String remark,
         Class<? extends CommandCustomHeader> classHeader) {
         RemotingCommand cmd = new RemotingCommand();
-        cmd.markResponseType();
+        cmd.markResponseType();    // 标记返回类型
         cmd.setCode(code);
         cmd.setRemark(remark);
         setCmdVersion(cmd);
 
         if (classHeader != null) {
             try {
-                CommandCustomHeader objectHeader = classHeader.newInstance();
+                CommandCustomHeader objectHeader = classHeader.newInstance();   // 新建实例对象
                 cmd.customHeader = objectHeader;
             } catch (InstantiationException e) {
                 return null;
@@ -219,7 +219,13 @@ public class RemotingCommand {
     }
 
     public void markResponseType() {
+        /**
+         * 向左唯一，后面用0补
+         */
         int bits = 1 << RPC_TYPE;
+        /**
+         * 或运算，两个位只要有一个为1，那么结果就是1
+         */
         this.flag |= bits;
     }
 

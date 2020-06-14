@@ -238,7 +238,7 @@ public class BrokerController {
         result = result && this.subscriptionGroupManager.load();
         result = result && this.consumerFilterManager.load();
 
-        if (result) {
+        if (result) {   // 如果数据需要更新
             try {
                 this.messageStore =
                     new DefaultMessageStore(this.messageStoreConfig, this.brokerStatsManager, this.messageArrivingListener,
@@ -328,7 +328,7 @@ public class BrokerController {
             this.consumerManageExecutor =
                 Executors.newFixedThreadPool(this.brokerConfig.getConsumerManageThreadPoolNums(), new ThreadFactoryImpl(
                     "ConsumerManageThread_"));
-
+            // 注册netty 消息 解析器 NettyRequestProcessor
             this.registerProcessor();
 
             final long initialDelay = UtilAll.computeNextMorningTimeMillis() - System.currentTimeMillis();

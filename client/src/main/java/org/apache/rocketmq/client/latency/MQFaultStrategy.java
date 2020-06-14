@@ -56,7 +56,7 @@ public class MQFaultStrategy {
     }
 
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
-        if (this.sendLatencyFaultEnable) {
+        if (this.sendLatencyFaultEnable) {  // 启用故障延迟机制
             try {
                 int index = tpInfo.getSendWhichQueue().getAndIncrement();
                 for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
@@ -89,9 +89,15 @@ public class MQFaultStrategy {
             return tpInfo.selectOneMessageQueue();
         }
 
-        return tpInfo.selectOneMessageQueue(lastBrokerName);
+        return tpInfo.selectOneMessageQueue(lastBrokerName);  // 不启用故障延迟
     }
 
+    /**
+     *
+     * @param brokerName
+     * @param currentLatency
+     * @param isolation 是否隔离
+     */
     public void updateFaultItem(final String brokerName, final long currentLatency, boolean isolation) {
         if (this.sendLatencyFaultEnable) {
             long duration = computeNotAvailableDuration(isolation ? 30000 : currentLatency);
@@ -99,6 +105,13 @@ public class MQFaultStrategy {
         }
     }
 
+    /**
+     * 根据currentLatency 本次消息发送延迟，从latencyMax尾部向前找到弟弟一个比currentLatency小的索引index。
+     * 如果没有找到，返回0
+     * 根据这个索引从notAvailableDuration 数组中取出对应时间，在这个时间内，Broker将设置为不可用。
+     * @param currentLatency
+     * @return
+     */
     private long computeNotAvailableDuration(final long currentLatency) {
         for (int i = latencyMax.length - 1; i >= 0; i--) {
             if (currentLatency >= latencyMax[i])

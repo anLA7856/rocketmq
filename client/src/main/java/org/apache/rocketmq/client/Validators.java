@@ -30,7 +30,7 @@ import org.apache.rocketmq.common.protocol.ResponseCode;
  * Common Validator
  */
 public class Validators {
-    public static final String VALID_PATTERN_STR = "^[%|a-zA-Z0-9_-]+$";
+    public static final String VALID_PATTERN_STR = "^[%|a-zA-Z0-9_-]+$";   // 可以以[%|a-zA-Z0-9_-]开头，$表示结束符号。
     public static final Pattern PATTERN = Pattern.compile(VALID_PATTERN_STR);
     public static final int CHARACTER_MAX_LENGTH = 255;
     public static final int TOPIC_MAX_LENGTH = 127;
@@ -84,7 +84,7 @@ public class Validators {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, "the message is null");
         }
         // topic
-        Validators.checkTopic(msg.getTopic());
+        Validators.checkTopic(msg.getTopic());  // 验证topic名字
 
         // body
         if (null == msg.getBody()) {
@@ -95,7 +95,7 @@ public class Validators {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, "the message body length is zero");
         }
 
-        if (msg.getBody().length > defaultMQProducer.getMaxMessageSize()) {
+        if (msg.getBody().length > defaultMQProducer.getMaxMessageSize()) {  // 最大长度为4m
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL,
                 "the message body size over max value, MAX: " + defaultMQProducer.getMaxMessageSize());
         }

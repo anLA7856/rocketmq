@@ -363,14 +363,14 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         throws InterruptedException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException {
         long beginStartTime = System.currentTimeMillis();
         final Channel channel = this.getAndCreateChannel(addr);
-        if (channel != null && channel.isActive()) {
+        if (channel != null && channel.isActive()) {   // channel是活跃的
             try {
-                doBeforeRpcHooks(addr, request);
+                doBeforeRpcHooks(addr, request);   // 执行发送前钩子
                 long costTime = System.currentTimeMillis() - beginStartTime;
                 if (timeoutMillis < costTime) {
                     throw new RemotingTimeoutException("invokeSync call timeout");
                 }
-                RemotingCommand response = this.invokeSyncImpl(channel, request, timeoutMillis - costTime);
+                RemotingCommand response = this.invokeSyncImpl(channel, request, timeoutMillis - costTime);  // 实际触发发送动作
                 doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(channel), request, response);
                 return response;
             } catch (RemotingSendRequestException e) {
@@ -557,7 +557,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         if (null == executor) {
             executorThis = this.publicExecutor;
         }
-
+        // 定义哪些操作，使用哪种线程池。
         Pair<NettyRequestProcessor, ExecutorService> pair = new Pair<NettyRequestProcessor, ExecutorService>(processor, executorThis);
         this.processorTable.put(requestCode, pair);
     }

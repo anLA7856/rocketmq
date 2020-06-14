@@ -200,11 +200,11 @@ public abstract class NettyRemotingAbstract {
                 public void run() {
                     try {
                         doBeforeRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd);
-                        final RemotingResponseCallback callback = new RemotingResponseCallback() {
+                        final RemotingResponseCallback callback = new RemotingResponseCallback() {   // callback 在 AsyncNettyRequestProcessor 中有使用
                             @Override
                             public void callback(RemotingCommand response) {
                                 doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd, response);
-                                if (!cmd.isOnewayRPC()) {
+                                if (!cmd.isOnewayRPC()) {   // oneway，就不发送
                                     if (response != null) {
                                         response.setOpaque(opaque);
                                         response.markResponseType();
@@ -220,7 +220,7 @@ public abstract class NettyRemotingAbstract {
                                 }
                             }
                         };
-                        if (pair.getObject1() instanceof AsyncNettyRequestProcessor) {
+                        if (pair.getObject1() instanceof AsyncNettyRequestProcessor) {  // 同步还是异步
                             AsyncNettyRequestProcessor processor = (AsyncNettyRequestProcessor)pair.getObject1();
                             processor.asyncProcessRequest(ctx, cmd, callback);
                         } else {

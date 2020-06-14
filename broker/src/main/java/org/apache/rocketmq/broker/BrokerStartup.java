@@ -91,7 +91,7 @@ public class BrokerStartup {
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
 
         if (null == System.getProperty(NettySystemConfig.COM_ROCKETMQ_REMOTING_SOCKET_SNDBUF_SIZE)) {
-            NettySystemConfig.socketSndbufSize = 131072;
+            NettySystemConfig.socketSndbufSize = 131072;  // 设置socket send buf size
         }
 
         if (null == System.getProperty(NettySystemConfig.COM_ROCKETMQ_REMOTING_SOCKET_RCVBUF_SIZE)) {
@@ -128,7 +128,7 @@ public class BrokerStartup {
                     InputStream in = new BufferedInputStream(new FileInputStream(file));
                     properties = new Properties();
                     properties.load(in);
-
+                    // 从配置中初始化数据
                     properties2SystemEnv(properties);
                     MixAll.properties2Object(properties, brokerConfig);
                     MixAll.properties2Object(properties, nettyServerConfig);
@@ -150,7 +150,7 @@ public class BrokerStartup {
             String namesrvAddr = brokerConfig.getNamesrvAddr();
             if (null != namesrvAddr) {
                 try {
-                    String[] addrArray = namesrvAddr.split(";");
+                    String[] addrArray = namesrvAddr.split(";");  // 分号解析所有的namesrv
                     for (String addr : addrArray) {
                         RemotingUtil.string2SocketAddress(addr);
                     }
@@ -219,7 +219,7 @@ public class BrokerStartup {
             // remember all configs to prevent discard
             controller.getConfiguration().registerConfig(properties);
 
-            boolean initResult = controller.initialize();
+            boolean initResult = controller.initialize();    // 初始化部分数据，包括线程池等
             if (!initResult) {
                 controller.shutdown();
                 System.exit(-3);

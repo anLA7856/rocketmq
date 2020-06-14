@@ -43,6 +43,11 @@ public class MessageDecoder {
     public static final char PROPERTY_SEPARATOR = 2;
     public static final int PHY_POS_POSITION = 4 + 4 + 4 + 4 + 4 + 8;
     public static final int SYSFLAG_POSITION = 4 + 4 + 4 + 4 + 4 + 8 + 8;
+
+    /*
+     * 消息体
+     */
+
 //    public static final int BODY_SIZE_POSITION = 4 // 1 TOTALSIZE
 //        + 4 // 2 MAGICCODE
 //        + 4 // 3 BODYCRC
@@ -57,7 +62,7 @@ public class MessageDecoder {
 //        + 8 // 12 STOREHOSTADDRESS
 //        + 4 // 13 RECONSUMETIMES
 //        + 8; // 14 Prepared Transaction Offset
-
+    // 创建message id，可以通过UtilAll.string2bytes 将mssageId还原成16字节的字节数组，从而提取消息偏移量，可以通过msgId迅速获取消息内容
     public static String createMessageId(final ByteBuffer input, final ByteBuffer addr, final long offset) {
         input.flip();
         int msgIDLength = addr.limit() == 8 ? 16 : 28;

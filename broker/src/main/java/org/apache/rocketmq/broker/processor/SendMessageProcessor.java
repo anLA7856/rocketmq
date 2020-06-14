@@ -57,6 +57,15 @@ import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * CommitLog: 消息存储文件，所有消息主题的消息都存储在CommitLog文件中。
+ * ConsumerQueue: 消息消费队列，消息到达CommitLog文件后，将IBU转发到消息消费队列，工消息消费者消费。
+ * IndexFile: 消息索引文件，主要存储消息Key和Offset的对应关系
+ * 事务状态服务: 存储每条消息的事务状态
+ * 定时消息服务: 每一个延迟级别对应一个消息消费队列，存储延迟队列的消息拉取进度。
+ */
+
+// 客户端发送请求后，这是对应命令处理类。
 public class SendMessageProcessor extends AbstractSendMessageProcessor implements NettyRequestProcessor {
 
     private List<ConsumeMessageHook> consumeMessageHookList;
@@ -70,7 +79,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                                           RemotingCommand request) throws RemotingCommandException {
         RemotingCommand response = null;
         try {
-            response = asyncProcessRequest(ctx, request).get();
+            response = asyncProcessRequest(ctx, request).get();   // 默认都是异步
         } catch (InterruptedException | ExecutionException e) {
             log.error("process SendMessage error, request : " + request.toString(), e);
         }
@@ -98,7 +107,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 if (requestHeader.isBatch()) {
                     return this.asyncSendBatchMessage(ctx, request, mqtraceContext, requestHeader);
                 } else {
-                    return this.asyncSendMessage(ctx, request, mqtraceContext, requestHeader);
+                    return this.asyncSendMessage(ctx, request, mqtraceContext, requestHeader);  // 非批量
                 }
         }
     }
@@ -252,14 +261,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final RemotingCommand response = preSend(ctx, request, requestHeader);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader)response.readCustomHeader();
 
-        if (response.getCode() != -1) {
+        if (response.getCode() != -1) {  // 不为-1，则失败
             return CompletableFuture.completedFuture(response);
         }
 
         final byte[] body = request.getBody();
 
-        int queueIdInt = requestHeader.getQueueId();
-        TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
+        int queueIdInt = requestHeader.getQueueId();  // 获取queue序号
+        TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());  // 获取topic 信息
 
         if (queueIdInt < 0) {
             queueIdInt = randomQueueId(topicConfig.getWriteQueueNums());
@@ -292,7 +301,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                                 + "] sending transaction message is forbidden");
                 return CompletableFuture.completedFuture(response);
             }
-            putMessageResult = this.brokerController.getTransactionalMessageService().asyncPrepareMessage(msgInner);
+            putMessageResult = this.brokerController.getTransactionalMessageService().asyncPrepareMessage(msgInner);  // 事务消息特殊处理
         } else {
             putMessageResult = this.brokerController.getMessageStore().asyncPutMessage(msgInner);
         }
@@ -311,7 +320,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             handlePutMessageResult(r, response, request, msgInner, responseHeader, sendMessageContext, ctx, queueIdInt)
         );
     }
-
+    // 如果消息重试次数超过允许的最大重试次数，消息将进入DLQ延迟队列，延迟队列主题：%DLQ%+消费组名，延迟队列在消息消费时将重点讲解
     private boolean handleRetryAndDLQ(SendMessageRequestHeader requestHeader, RemotingCommand response,
                                       RemotingCommand request,
                                       MessageExt msg, TopicConfig topicConfig) {
@@ -644,7 +653,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
     private RemotingCommand preSend(ChannelHandlerContext ctx, RemotingCommand request,
                                     SendMessageRequestHeader requestHeader) {
-        final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
+        final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);  // 创建response
 
         response.setOpaque(request.getOpaque());
 
@@ -662,7 +671,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         response.setCode(-1);
-        super.msgCheck(ctx, requestHeader, response);
+        super.msgCheck(ctx, requestHeader, response);   // 价差
         if (response.getCode() != -1) {
             return response;
         }
