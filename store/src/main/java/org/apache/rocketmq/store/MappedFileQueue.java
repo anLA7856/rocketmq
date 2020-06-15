@@ -29,22 +29,25 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * MappedFileQueue 是MappedFile 的管理容器
+ */
 public class MappedFileQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
 
     private static final int DELETE_FILES_BATCH_MAX = 10;
 
-    private final String storePath;
+    private final String storePath;  // 存储目录
 
-    private final int mappedFileSize;
+    private final int mappedFileSize;  // 单个文件存储大小
 
-    private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
+    private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();   // MappedFile 文件集合
 
-    private final AllocateMappedFileService allocateMappedFileService;
+    private final AllocateMappedFileService allocateMappedFileService;   // MappedFile 服务类
 
-    private long flushedWhere = 0;
-    private long committedWhere = 0;
+    private long flushedWhere = 0;  // 当前刷盘指针，标识该指正之前所有数据全部持久化到磁盘
+    private long committedWhere = 0;   // 当前数据提交指针，内存中ByteBuffer当前的写指针，该值大于flushedWhere
 
     private volatile long storeTimestamp = 0;
 
@@ -74,6 +77,12 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 根据消息存储时间戳来查找MappedFile，从MappedFile列表第一个开始找，找到一个更新时间大于待查找时间错恩建
+     * 如果不存在，则返回最后一个MappedFile文件
+     * @param timestamp
+     * @return
+     */
     public MappedFile getMappedFileByTime(final long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
 
@@ -284,7 +293,7 @@ public class MappedFileQueue {
         }
         return true;
     }
-
+    // 没有直接返回0，返回getFileFromOffset
     public long getMinOffset() {
 
         if (!this.mappedFiles.isEmpty()) {
@@ -299,6 +308,10 @@ public class MappedFileQueue {
         return -1;
     }
 
+    /**
+     * 获取最大偏移量
+     * @return
+     */
     public long getMaxOffset() {
         MappedFile mappedFile = getLastMappedFile();
         if (mappedFile != null) {
@@ -453,6 +466,11 @@ public class MappedFileQueue {
     }
 
     /**
+     * 根据温家安偏移量offset查找 MappedFile，如果直接使用offset % MappedFile 是否可行，答案是否定的。由于使用内存映射1，只要存在于存储目录下的文件，都需要创建内存映射文件。
+     * 如果是不定时将已消费的消息存内存中啥拿出，会造成极大的内存压力与资源是浪费你。
+     * 所以第一个文件不一定是00000000000000000000000，因为该文件在某一时刻会被删除。
+     * 最终根据offset定位MappedFile算法为 int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
+     *
      * Finds a mapped file by offset.
      *
      * @param offset Offset.

@@ -42,10 +42,15 @@ public abstract class ReferenceResource {
 
     public void shutdown(final long intervalForcibly) {
         if (this.available) {
-            this.available = false;
-            this.firstShutdownTimestamp = System.currentTimeMillis();
+            this.available = false;  // 设置 available
+            this.firstShutdownTimestamp = System.currentTimeMillis();  // 设置关闭时间戳
             this.release();
         } else if (this.getRefCount() > 0) {
+            /**
+             * 如果引用次数大于
+             * 0 ，对比当前时间与firstShutdownTimestamp ，如果已经超过了其最大拒绝存活期，每执行
+             * 一次，将引用数减少1000 ，直到引用数小于0 时通过执行rea l se 方法释放资源。
+             */
             if ((System.currentTimeMillis() - this.firstShutdownTimestamp) >= intervalForcibly) {
                 this.refCount.set(-1000 - this.getRefCount());
                 this.release();
@@ -55,7 +60,7 @@ public abstract class ReferenceResource {
 
     public void release() {
         long value = this.refCount.decrementAndGet();
-        if (value > 0)
+        if (value > 0)  // release 只有在引用次数小于1 的情况下才会释放资源
             return;
 
         synchronized (this) {
@@ -70,6 +75,11 @@ public abstract class ReferenceResource {
 
     public abstract boolean cleanup(final long currentRef);
 
+    /**
+     * 判断是否清理完成，判断标准是引用次数小于等于0 并且cleanupOver 为true,
+     * cleanupOver 为true 的触发条件是release 成功将MappedByteBuff，巳r 资源释放。
+     * @return
+     */
     public boolean isCleanupOver() {
         return this.refCount.get() <= 0 && this.cleanupOver;
     }

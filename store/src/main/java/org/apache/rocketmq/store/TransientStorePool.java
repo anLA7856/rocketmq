@@ -28,6 +28,11 @@ import org.apache.rocketmq.store.config.MessageStoreConfig;
 import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
 
+/**
+ * 短暂的存储池。RocketMQ 单独创建一个MappedByteBuffer 内存
+ * 缓存池，用来临时存储数据，数据先写人该内存映射中，然后由commit 线程定时将数据
+ * 从该内存复制到与目的物理文件对应的内存映射中。
+ */
 public class TransientStorePool {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
