@@ -21,11 +21,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class IndexHeader {
-    public static final int INDEX_HEADER_SIZE = 40;
-    private static int beginTimestampIndex = 0;
-    private static int endTimestampIndex = 8;
-    private static int beginPhyoffsetIndex = 16;
-    private static int endPhyoffsetIndex = 24;
+    public static final int INDEX_HEADER_SIZE = 40;  // 40字节
+    private static int beginTimestampIndex = 0;   // 最小存储时间
+    private static int endTimestampIndex = 8;   // 该索引的最大存储时间
+    private static int beginPhyoffsetIndex = 16;  // 该索引文件包含消息的最小物理偏移量（commitlog的文件偏移量）
+    private static int endPhyoffsetIndex = 24;  // 该索引文件包含消息最大物理偏移量（commitlog文件）
     private static int hashSlotcountIndex = 32;
     private static int indexCountIndex = 36;
     private final ByteBuffer byteBuffer;
@@ -33,9 +33,9 @@ public class IndexHeader {
     private AtomicLong endTimestamp = new AtomicLong(0);
     private AtomicLong beginPhyOffset = new AtomicLong(0);
     private AtomicLong endPhyOffset = new AtomicLong(0);
-    private AtomicInteger hashSlotCount = new AtomicInteger(0);
+    private AtomicInteger hashSlotCount = new AtomicInteger(0);   // hashslot个数
 
-    private AtomicInteger indexCount = new AtomicInteger(1);
+    private AtomicInteger indexCount = new AtomicInteger(1);   // index条目当前已使用个数，Index条目在Index条目中按顺序存储。
 
     public IndexHeader(final ByteBuffer byteBuffer) {
         this.byteBuffer = byteBuffer;

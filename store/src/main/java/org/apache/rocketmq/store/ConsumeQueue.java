@@ -25,6 +25,18 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+/**
+ * 该文件可以看做是CommitLog关于消息消费的索引文件，consumequeue的第一级目录为消息主题，第二级目录为主题的消息队列。
+ *
+ * consumequeue 不会全量存储信息，存储格式如下
+ *
+ * commitlogoffset(8字节)+size(4字节)+taghashcode(8字节)
+ *
+ * 单个consumequeue默认包含30万条目，单个文件为30w*20字节。
+ *
+ * 单个 consumequeue 可以看做一个consumequeue条目 数组。
+ *
+ */
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -152,6 +164,13 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据时间戳定位到物理文件
+     * 1. 从第一个文件开始，找到第一个文件更新时间大雨该时间戳文件。
+     * 2. 二分法 （因为consumequeue是看做基于条目的索引，所以时间是有序的。）
+     * @param timestamp
+     * @return
+     */
     public long getOffsetInQueueByTime(final long timestamp) {
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
         if (mappedFile != null) {
@@ -488,17 +507,23 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据startIndex获取消费队列条目
+     * @param startIndex
+     * @return
+     */
     public SelectMappedBufferResult getIndexBuffer(final long startIndex) {
         int mappedFileSize = this.mappedFileSize;
-        long offset = startIndex * CQ_STORE_UNIT_SIZE;
+        long offset = startIndex * CQ_STORE_UNIT_SIZE;  // 获取偏移量
         if (offset >= this.getMinLogicOffset()) {
-            MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);
+            MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);   // 获取根据偏移量丁威到具体物理文件
             if (mappedFile != null) {
+                // 通过offset与物理文件大小取模，获取该文件偏移量，然后读取20字节即可。
                 SelectMappedBufferResult result = mappedFile.selectMappedBuffer((int) (offset % mappedFileSize));
                 return result;
             }
         }
-        return null;
+        return null;  // 说明消息被删除
     }
 
     public ConsumeQueueExt.CqExtUnit getExt(final long offset) {

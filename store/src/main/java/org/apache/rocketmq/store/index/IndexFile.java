@@ -27,6 +27,21 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.MappedFile;
 
+/**
+ * consumequeue是rocketmq专门为订阅构建的索引，提高主题与消息队列检索速度。
+ * 另外，rocketmq引入了hash索引机制为消息建立索引。
+ *
+ * IndexFile总共包括IndexHeader、Hash槽，Hash条目
+ * 1. IndexHeader头部，包含该IndexFile的统计信息
+ * 2. Hash槽，一个IndexFile包含500万个Hash槽，每个Hash槽存储的落在Hash槽的Hashcode最新Index的索引，每个Hash槽占4个字节
+ * 3. Index条目列表，默认一个索引文件包含2000万个条目，每个Index条目结构如下
+ *  - hashcode，key的hashcode
+ *  - phyoffset，消息对应物理偏移量
+ *  - timedif：该消息存储时间与第一条消息的时间戳差值，小于0无效
+ *  - preIndexNo：该条目前一条记录的Index索引，当出现冲突时，构建的链表索引
+ *
+ *
+ */
 public class IndexFile {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static int hashSlotSize = 4;
@@ -89,6 +104,13 @@ public class IndexFile {
         return this.mappedFile.destroy(intervalForcibly);
     }
 
+    /**
+     * 如何将 Map<String(消息索引key),long phyOffset(物理偏移量)> 存入索引文件
+     * @param key
+     * @param phyOffset
+     * @param storeTimestamp
+     * @return
+     */
     public boolean putKey(final String key, final long phyOffset, final long storeTimestamp) {
         if (this.indexHeader.getIndexCount() < this.indexNum) {
             int keyHash = indexKeyHashMethod(key);
