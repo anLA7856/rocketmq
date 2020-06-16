@@ -271,6 +271,9 @@ public class IndexFile {
                     //Hash Code 没有对应的条目， 直接返回
                 } else {
                     for (int nextIndexToRead = slotValue; ; ) {
+                        // 由于会存在hash冲突，根据slotValue丁威该hash槽最新一个item条目，将存储
+                        // 的物理便宜加入到phyOffsets中，然后继续验证Item条目上一个Index下标。
+
                         if (phyOffsets.size() >= maxNum) {
                             break;
                         }
@@ -295,9 +298,10 @@ public class IndexFile {
                         boolean timeMatched = (timeRead >= begin) && (timeRead <= end);
 
                         if (keyHash == keyHashRead && timeMatched) {
+                            // 如果hashcode匹配，切消息存储时间介于start和end之间，则将加入到 phyOffsets
                             phyOffsets.add(phyOffsetRead);
                         }
-
+                        // 验证上一个索引
                         if (prevIndexRead <= invalidIndex
                             || prevIndexRead > this.indexHeader.getIndexCount()
                             || prevIndexRead == nextIndexToRead || timeRead < begin) {

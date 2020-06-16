@@ -153,6 +153,13 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 加载Commitlog 文件， 加载$ ｛ ROCKET_HOME }/store/commitlog 目录下所有
+     * 文件并按照文件名排序。如果文件大小与配置文件的单个文件大小不一致，将忽略该目录
+     * 下所有文件， 然后创建MappedFile 对象。注意load 方法将wrotePosition 、flushedPosition ,
+     * committedPosition 三个指针都设置为文件大小。
+     * @return
+     */
     public boolean load() {
         File dir = new File(this.storePath);
         File[] files = dir.listFiles();

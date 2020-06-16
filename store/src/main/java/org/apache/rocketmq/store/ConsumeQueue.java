@@ -414,6 +414,7 @@ public class ConsumeQueue {
                         topic, queueId, request.getCommitLogOffset());
                 }
             }
+            // 依次将消息偏移量、消息长度、tag hash cod e 写入到ByteBuffer 中
             boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(),
                 request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
             if (result) {
@@ -441,6 +442,16 @@ public class ConsumeQueue {
         this.defaultMessageStore.getRunningFlags().makeLogicsQueueError();
     }
 
+    /**
+     * 依次将消息偏移量、消息长度、tag hash cod e 写入到ByteBuffer 中，并根据
+     * consumeQueueOffset 计算Co numeQu eue 中的物理地址，将内容追加到ConsumeQueue 的内
+     * 存映射文件中（本操作只追击并不刷盘）， ConumeQueue 的刷盘方式固定为异步刷盘模式。
+     * @param offset
+     * @param size
+     * @param tagsCode
+     * @param cqOffset
+     * @return
+     */
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
         final long cqOffset) {
 

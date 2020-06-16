@@ -166,6 +166,10 @@ public class CommitLog {
 
     /**
      * When the normal exit, data recovery, all memory data have been flush
+     *
+     * Broker 正常停止再重启时，从倒数第三个文件开始进行恢复，如果不足3 个文
+     * 件，则从第一个文件开始恢复。checkCRCOnRecover 参数设置在进行文件恢复时查找消息
+     * 时是否验证CRC 。
      */
     public void recoverNormally(long maxPhyOffsetOfConsumeQueue) {
         boolean checkCRCOnRecover = this.defaultMessageStore.getMessageStoreConfig().isCheckCRCOnRecover();
@@ -176,11 +180,23 @@ public class CommitLog {
             if (index < 0)
                 index = 0;
 
+
+            // 解释一下两个局部变量， mappedFileOffset 为当前文件已校验通过的offset ,
+            // processOffset 为Commitlog 文件已确认的物理偏移量等于mappedFile.getFileFromOffset 加
+            // 上mappedFileOffset 。
+
             MappedFile mappedFile = mappedFiles.get(index);
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
             long processOffset = mappedFile.getFileFromOffset();
             long mappedFileOffset = 0;
             while (true) {
+
+                // ：遍历Commitlog 文件， 每次取出一条消息， 如果查找结果为true 并且消息的
+                //长度大于0 表示消息正确， mappedFileOffset 指针向前移动本条消息的长度； 如果查找结
+                //果为true 并且消息的长度等于0 ， 表示已到该文件的末尾，如果还有下一个文件，则重置
+                //process Offset 、mappedFileOffset 重复步骤3 ，否则跳出循环； 如果查找结构为false ，表明
+                //该文件未填满所有消息，跳出循环，结束遍历文件。
+
                 DispatchRequest dispatchRequest = this.checkMessageAndReturnSize(byteBuffer, checkCRCOnRecover);
                 int size = dispatchRequest.getMsgSize();
                 // Normal data
@@ -210,7 +226,7 @@ public class CommitLog {
                     break;
                 }
             }
-
+            // 更新MappedFileQueue 的flushedWhere 与commiteedWhere 指针
             processOffset += mappedFileOffset;
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
@@ -219,6 +235,13 @@ public class CommitLog {
             // Clear ConsumeQueue redundant data
             if (maxPhyOffsetOfConsumeQueue >= processOffset) {
                 log.warn("maxPhyOffsetOfConsumeQueue({}) >= processOffset({}), truncate dirty logic files", maxPhyOffsetOfConsumeQueue, processOffset);
+                // 删除offset 之后的所有文件。遍历目录下的文件，如果文件的尾部偏移量小
+                //于offset 则跳过该文件，如果尾部的偏移量大于offset ，则进一步比较offset 与文件的开
+                //始偏移量， 如果offset 大于文件的起始偏移量， 说明当前文件包含了有效偏移里，设置
+                //MappedFile 的flushedPosition 和commitedPosition ；如果offse t 小于文件的起始偏移量，说
+                //明该文件是有效文件后面创建的，调用MappedFile#destory 释放MappedFile 占用的内存资
+                //源（内存映射与内存通道等），然后加入到待删除文件列表中，最终调用deleteExpiredFi le
+                //将文件从物理磁盘删除。过期文件的删除将在下文详细介绍。
                 this.defaultMessageStore.truncateDirtyLogicFiles(processOffset);
             }
         } else {
@@ -423,6 +446,14 @@ public class CommitLog {
         this.confirmOffset = phyOffset;
     }
 
+    /**
+     * Broker 异常停止文件恢复的实现为C ommitLog#recoverAbnorm a lly 。异常文件恢复的
+     * 步骤与正常停止文件恢复的流程基本相同，其主要差别有两个。首先，正常停止默认从倒
+     * 数第三个文件开始进行恢复， 而异常停止则需要从最后一个文件往前走， 找到第一个消息
+     * 存储正常的文件。其次，如果commitlog 目录没有消息文件，如果在消息消费队列目录下
+     * 存在文件，则需要销毁。
+     * @param maxPhyOffsetOfConsumeQueue
+     */
     @Deprecated
     public void recoverAbnormally(long maxPhyOffsetOfConsumeQueue) {
         // recover by the minimum time stamp
