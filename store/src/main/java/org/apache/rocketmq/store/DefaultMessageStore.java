@@ -2009,7 +2009,14 @@ public class DefaultMessageStore implements MessageStore {
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
-
+                                    /**
+                                     * 当新消息达到CommitLog 时， ReputMessageService 线程负责将消息转发给ConsumeQueue
+                                     * 、IndexFile ，如果Broker 端开启了长轮询模式并且角色主节点，则最终将调用PullRequestHoldService
+                                     * 线程的notifyMessageArriving 方法唤醒挂起线程， 判断当前消费队列最
+                                     *
+                                     * 大偏移量是否大于待拉取偏移量， 如果大于则拉取消息。长轮询模式使得消息拉取能实现
+                                     * 准实时。
+                                     */
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
                                         && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
                                         DefaultMessageStore.this.messageArrivingListener.arriving(dispatchRequest.getTopic(),

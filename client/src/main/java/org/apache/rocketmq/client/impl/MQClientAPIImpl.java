@@ -756,6 +756,15 @@ public class MQClientAPIImpl {
         return null;
     }
 
+    /**
+     * 消息拉取客户端入口
+     * @param addr
+     * @param request
+     * @param timeoutMillis
+     * @param pullCallback
+     * @throws RemotingException
+     * @throws InterruptedException
+     */
     private void pullMessageAsync(
         final String addr,
         final RemotingCommand request,
@@ -798,6 +807,14 @@ public class MQClientAPIImpl {
         return this.processPullResponse(response);
     }
 
+    /**
+     * 根据响应结果解码成PullResultExt 对象，此时只是从网络中读取消息列表到
+     * byte[] messageBinary 属性。
+     * @param response
+     * @return
+     * @throws MQBrokerException
+     * @throws RemotingCommandException
+     */
     private PullResult processPullResponse(
         final RemotingCommand response) throws MQBrokerException, RemotingCommandException {
         PullStatus pullStatus = PullStatus.NO_NEW_MSG;

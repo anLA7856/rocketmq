@@ -35,7 +35,10 @@ public class RebalanceService extends ServiceThread {
     @Override
     public void run() {
         log.info(this.getServiceName() + " service started");
-
+        /**
+         * RebalanceService 线程默认每隔20s 执行一次mqClientFactory. doRebalance（）方法，可
+         * 以使用－ Drocketmq.client.r巳balance. waitlnterval=interval 来改变默认值。
+         */
         while (!this.isStopped()) {
             this.waitForRunning(waitInterval);
             this.mqClientFactory.doRebalance();

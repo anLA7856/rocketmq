@@ -324,6 +324,10 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
         final long beginTimestamp = System.currentTimeMillis();
 
+        /**
+         * 调用pullAPIWrapper 的processPullResult 将消息字节数组解码成消息列表填充
+         * msgFoundList ，井对消息进行消息过滤（ TAG ）模式。
+         */
         PullCallback pullCallback = new PullCallback() {
             @Override
             public void onSuccess(PullResult pullResult) {
@@ -333,6 +337,13 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
                     switch (pullResult.getPullStatus()) {
                         case FOUND:
+                            /**
+                             * 更新PullRequ巳st 的下一次拉取偏移量，如果msgFou ndList 为空， 则立即将
+                             * PullReqeuest 放入到PullMessageService 的pullRequestQu巳U巳，以便PullMessag巳Serivce 能
+                             * 及时唤醒并再次执行消息拉取。为什么Pu llStatus .FOUND, msgFoundList 还会为空呢？因为
+                             * 在Rocke tMQ 根据TAG 消息过滤，在服务端只是验证了TAG 的has h code ，在客户端再次
+                             * 对消息进行过滤， 故可能会出现msgFoundList 为空的情况。
+                             */
                             long prevRequestOffset = pullRequest.getNextOffset();
                             pullRequest.setNextOffset(pullResult.getNextBeginOffset());
                             long pullRT = System.currentTimeMillis() - beginTimestamp;
@@ -349,12 +360,23 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                                     pullRequest.getMessageQueue().getTopic(), pullResult.getMsgFoundList().size());
 
                                 boolean dispatchToConsume = processQueue.putMessage(pullResult.getMsgFoundList());
+                                /**
+                                 * 首先将拉取到的消息存入ProcessQueue ，然后将拉取到的消息提交到ConsumeMessageService
+                                 * 中供消费者消费，该方法是一个异步方法，也就是PullCallBack 将消息提交
+                                 * 到ConsumeMessageService 中就会立即返回，至于这些消息如何消费， PullCallBack 不关注。
+                                 */
                                 DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
                                     pullResult.getMsgFoundList(),
                                     processQueue,
                                     pullRequest.getMessageQueue(),
                                     dispatchToConsume);
 
+                                /**
+                                 * ：将消息提交给消费者线程之后PullCallBack 将立即返回，可以说本次消息拉取
+                                 * 顺利完成，然后根据pullinterva l 参数，如果p ulllnterva l > O ，则等待pulllnterval 毫秒后将
+                                 * PullRequest 对象放入到PullMess ageService 的pullRequ estQ u巳ue 中，该消息队列的下次拉
+                                 * 取即将被激活，达到持续消息拉取，实现准实时拉取消息的效果。
+                                 */
                                 if (DefaultMQPushConsumerImpl.this.defaultMQPushConsumer.getPullInterval() > 0) {
                                     DefaultMQPushConsumerImpl.this.executePullRequestLater(pullRequest,
                                         DefaultMQPushConsumerImpl.this.defaultMQPushConsumer.getPullInterval());
@@ -373,6 +395,19 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                             }
 
                             break;
+                        /**
+                         * 如果返回NO NEW MSG （没有新消息）、NO MATCHED MSG （没有匹配消息）， 则直
+                         * 接使用服务器端校正的偏移量进行下一次消息的拉取。再来看看服务端是如何校正Offset 。
+                         * NO NEW MSG ，对应GetMessageResult.OFFSET_FOUND_ NULL 、GetMessageResult.
+                         * OFFSET OVERFLOW ONE 。
+                         * OFFSET OVERFLOW ONE ：待拉取offset 等于消息队列最大的偏移量，如果有新的
+                         * 消息到达， 此时会创建一个新的Consum巳Queue 文件，按照上一个ConsueQueue 的最大偏
+                         * 移量就是下一个文件的起始偏移量，所以如果按照该offset 第二次拉取消息时能成功。
+                         * OFFSET FOUND NULL ： 是根据Consume queu e 的偏移量没有找到内容，将偏移量
+                         * 定位到下一个Co nsumeQue ue ，其实就是offset ＋（ 一个Co nsumeQueue 包含多少个条目
+                         * =MappedFileSize I 20 ） 。
+                         */
+
                         case NO_NEW_MSG:
                             pullRequest.setNextOffset(pullResult.getNextBeginOffset());
 
@@ -388,6 +423,19 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                             DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
                             break;
                         case OFFSET_ILLEGAL:
+
+                            /**
+                             * 如果拉取结果显示偏移量非法，首先将ProcessQueue 设置dropped 为ture ， 表示丢弃
+                             * 该消费队列， 意味着ProcessQueue 中拉取的消息将停止消费，然后根据服务端下一次校
+                             * 对的偏移量尝试更新消息消费进度（ 内存中），然后尝试持久化消息消费进度，并将该消
+                             * 息队列从Rebalacnlmpl 的处理队列中移除，意味着暂停该消息队列的消息拉取，等待下
+                             * 一次消息队列重新负载。OFFSET_ILLEGAL 对应服务端GetMessageResult 状态的NO
+                             * MATCHED LOGIC_ QUEUE 、NO_MESSAGE_IN_ QUEUE 、OFFSET_OVERFLOW_
+                             * BADLY 、OFFSET_TOO_ SMALL 中，这些状态服务端偏移量校正基本上使用原offset ，在
+                             * 客户端更新消息消费进度时只有当消息进度比当前消费进度大才会覆盖，保证消息进度的
+                             * 准确性。
+                             */
+
                             log.warn("the pull request offset illegal, {} {}",
                                 pullRequest.toString(), pullResult.toString());
                             pullRequest.setNextOffset(pullResult.getNextBeginOffset());

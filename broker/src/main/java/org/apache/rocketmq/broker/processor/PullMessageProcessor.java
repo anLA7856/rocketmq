@@ -68,6 +68,20 @@ import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+
+/**
+ * RocketMQ 并没有真正实现推模式，而是消费者主动向消息服务器拉取消息， RocketMQ
+ * 推模式是循环向消息服务端发送消息拉取请求，如果消息消费者向RocketMQ 发送消息拉取
+ * 时，消息并未到达消费队列，如果不启用长轮询机制，则会在服务端等待shortPollingTimeMills
+ * 时间后（挂起）再去判断消息是否已到达消息队列，如果消息未到达则提示消息拉
+ * 取客户端PULL_NOT_FOUND （消息不存在），如果开启长轮询模式， RocketMQ 一方面会每
+ * 5s 轮询检查一次消息是否可达， 同时一有新消息到达后立马通知挂起线程再次验证新消息是
+ * 否是自己感兴趣的消息，如果是则从commitlog 文件提取消息返回给消息拉取客户端，否则
+ * 直到挂起超时，超时时间由消息拉取方在消息拉取时封装在请求参数中， PUSH 模式默认为
+ * 15s, PULL 模式通过DefaultMQPullConsum巳r#setBrokerSuspendMaxTim巳Millis 设置。RocketMQ
+ * 通过在Broker 端配置longPollingEnable 为仕回来开启长轮询模式。消息拉取时服务端从
+ * Commitlog 未找到消息时的处理逻辑如下。
+ */
 public class PullMessageProcessor extends AsyncNettyRequestProcessor implements NettyRequestProcessor {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final BrokerController brokerController;
@@ -248,6 +262,8 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             this.brokerController.getMessageStore().getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                 requestHeader.getQueueId(), requestHeader.getQueueOffset(), requestHeader.getMaxMsgNums(), messageFilter);
         if (getMessageResult != null) {
+            // 根据主从同步延迟，如果从节点数据包含下一次拉取的偏移量，设置下一次拉
+            //取任务的brokerId 。
             response.setRemark(getMessageResult.getStatus().name());
             responseHeader.setNextBeginOffset(getMessageResult.getNextBeginOffset());
             responseHeader.setMinOffset(getMessageResult.getMinOffset());
@@ -285,13 +301,13 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             }
 
             switch (getMessageResult.getStatus()) {
-                case FOUND:
+                case FOUND: // 成功
                     response.setCode(ResponseCode.SUCCESS);
                     break;
-                case MESSAGE_WAS_REMOVING:
+                case MESSAGE_WAS_REMOVING:  // 消息存放在下个commitlog 文 件中，也就是让客户端立即重试
                     response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
                     break;
-                case NO_MATCHED_LOGIC_QUEUE:
+                case NO_MATCHED_LOGIC_QUEUE:  // 偏移量移动
                 case NO_MESSAGE_IN_QUEUE:
                     if (0 != requestHeader.getQueueOffset()) {
                         response.setCode(ResponseCode.PULL_OFFSET_MOVED);
@@ -416,6 +432,11 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
 
+                    /**
+                     * 如果brokerAllowSuspend 为true ，表示支持挂起，则将响应对象response 设置为
+                     * null ，将不会立即向客户端写入响应， hasSuspendFlag 参数在拉取消息时构建的拉取标记，
+                     * 默认为true 。
+                     */
                     if (brokerAllowSuspend && hasSuspendFlag) {
                         long pollingTimeMills = suspendTimeoutMillisLong;
                         if (!this.brokerController.getBrokerConfig().isLongPollingEnable()) {
@@ -468,7 +489,10 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("store getMessage return null");
         }
-
+        // 如果commitlog 标记可用并且当前节点为主节点，则更新消息消费进度
+        // 服务端消息拉取处理完毕，将返回结果到拉取消息调用方。在调用方， 需要重点关注
+        //PULL RETRY IMMEDIATELY 、PULL OFFSET MOVED 、PULL NOT FOUND 等情况
+        //下如何校正拉取偏移量。
         boolean storeOffsetEnable = brokerAllowSuspend;
         storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
         storeOffsetEnable = storeOffsetEnable
@@ -555,12 +579,24 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         }
     }
 
+
+
     public void executeRequestWhenWakeup(final Channel channel,
         final RemotingCommand request) throws RemotingCommandException {
         Runnable run = new Runnable() {
             @Override
             public void run() {
                 try {
+                    /**
+                     * 这里的核心又回到长轮询的人口代码了，其核心是设置brokerAllo w Suspend 为
+                     * false ， 表示不支持拉取线程挂起，即当根据偏移量无法获取消息时将不挂起线程等待新消
+                     * 息到来，而是直接返回告诉客户端本次消息拉取未找到消息。
+                     * 回想一下，如果当开启了长轮询机制， PullRequestHoldService 线程会每隔5s 被唤醒去
+                     * 尝试检测是否有新消息的到来直到超时， 如果被挂起， 需要等待缸，消息拉取实时性比较
+                     * 差，为了避免这种情况， RocketMQ 引入另外一种机制： 当消息到达时唤醒挂起线程触发一
+                     * 次检查。
+                     */
+
                     final RemotingCommand response = PullMessageProcessor.this.processRequest(channel, request, false);
 
                     if (response != null) {

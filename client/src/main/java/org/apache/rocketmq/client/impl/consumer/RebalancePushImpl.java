@@ -32,6 +32,19 @@ import org.apache.rocketmq.common.protocol.heartbeat.ConsumeType;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 
+/**
+ * 问题l : PullRequest 对象在什么时候创建并加入到pullR巳questQueue 中以便唤醒
+ * PullMessageService 线程。
+ * Rebalances 巳rvic e 线程每隔2 0s 对消费者订阅的主题进行一次队列重新分配， 每一次
+ * 分配都会获取主题的所有队列、从Broker 服务器实时查询当前该主题该消费组内消费者列
+ * 表， 对新分配的消息队列会创建对应的P ullRequest 对象。在一个JVM 进程中，同一个消
+ * 费组同一个队列只会存在一个PullRequest 对象。
+ * 问题2 ： 集群内多个消费者是如何负载主题下的多个消费队列，并且如果有新的消费者
+ * 加入时，消息队列又会如何重新分布。
+ * 由于每次进行队列重新负载时会从Broker 实时查询出当前消费组内所有消费者，并且
+ * 对消息队列、消费者列表进行排序，这样新加入的消费者就会在队列重新分布时分配到消
+ * 费队列从而消费消息。
+ */
 public class RebalancePushImpl extends RebalanceImpl {
     private final static long UNLOCK_DELAY_TIME_MILLS = Long.parseLong(System.getProperty("rocketmq.client.unlockDelayTimeMills", "20000"));
     private final DefaultMQPushConsumerImpl defaultMQPushConsumerImpl;
@@ -146,7 +159,13 @@ public class RebalancePushImpl extends RebalanceImpl {
             case CONSUME_FROM_LAST_OFFSET_AND_FROM_MIN_WHEN_BOOT_FIRST:
             case CONSUME_FROM_MIN_OFFSET:
             case CONSUME_FROM_MAX_OFFSET:
-            case CONSUME_FROM_LAST_OFFSET: {
+            case CONSUME_FROM_LAST_OFFSET: {  // 从队列最新偏移量开始 消费。
+                /**
+                 * offsetStore.readOffset ( mq, R e adOffsetTyp e.READ _F ROM_STORE ） 返回一1 表示该消
+                 * 息队列刚创建。从磁盘中读取到消息队列的消费进度， 如果大于0 则直接返回即可；如果
+                 * 等于－ 1 , CONSUME FROM L A ST OFFS ET 模式下获取该消息队列当前最大的偏移量。
+                 * 如果小于－ 1 ， 则表示该消息进度文件中存储了错误的偏移量， 返回－ 1 。
+                 */
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {
                     result = lastOffset;
@@ -167,7 +186,12 @@ public class RebalancePushImpl extends RebalanceImpl {
                 }
                 break;
             }
-            case CONSUME_FROM_FIRST_OFFSET: {
+            case CONSUME_FROM_FIRST_OFFSET: {   // 从头开始消费。
+                /**
+                 * 从磁盘中读取到消息队列的消费进度， 如果大于0 则直接返回即可；如果等于－ 1 ,
+                 * CONSUME FROM FIRST OFFS ET 模式下直接返回0 ，从头开始。如果小于－ 1 ，则表示
+                 * 该消息进度文件中存储了错误的偏移量，返回一l 。
+                 */
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {
                     result = lastOffset;
@@ -178,7 +202,14 @@ public class RebalancePushImpl extends RebalanceImpl {
                 }
                 break;
             }
-            case CONSUME_FROM_TIMESTAMP: {
+            case CONSUME_FROM_TIMESTAMP: {  // 从消费者启动的时间戳对应的消费进度开始消费。
+                /**
+                 * 从磁盘中读取到消息队列的消费进度， 如果大于0 则直接返回即可；如果等于一1 '
+                 * CONSUME FROM TIMESTAMP 模式下会尝试去操作消息存储时间戳为消费者启动的时间
+                 * 戳，如果能找到则返回找到的偏移量，否则返回0 。如果小于一1 ，则表示该消息进度文件
+                 * 中存储了错误的偏移量，返回一l 。
+                 */
+
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {
                     result = lastOffset;
@@ -211,6 +242,10 @@ public class RebalancePushImpl extends RebalanceImpl {
         return result;
     }
 
+    /**
+     * 将PullRequest 加入到PullMessageService 中， 以便唤醒PullMessageService 线程。
+     * @param pullRequestList
+     */
     @Override
     public void dispatchPullRequest(List<PullRequest> pullRequestList) {
         for (PullRequest pullRequest : pullRequestList) {

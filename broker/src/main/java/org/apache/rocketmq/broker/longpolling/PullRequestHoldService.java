@@ -29,6 +29,16 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.ConsumeQueueExt;
 
+/**
+ * RocketMQ 轮询机制由两个线程共同来完成。
+ *
+ *
+ *1 ) PullReque s tHoldService ： 每隔Ss 重试一次。
+ * 2 ) DefaultM巳ssageStore #ReputMe s sageService ， 每处理一次重新拉取， Thread.sleep ( 1 ) ,
+ * 继续下一次检查。
+ *
+ *
+ */
 public class PullRequestHoldService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final String TOPIC_QUEUEID_SEPARATOR = "@";
@@ -42,7 +52,7 @@ public class PullRequestHoldService extends ServiceThread {
     }
 
     public void suspendPullRequest(final String topic, final int queueId, final PullRequest pullRequest) {
-        String key = this.buildKey(topic, queueId);
+        String key = this.buildKey(topic, queueId); // 根据消息主题与消息队列构建k巳y
         ManyPullRequest mpr = this.pullRequestTable.get(key);
         if (null == mpr) {
             mpr = new ManyPullRequest();
@@ -65,6 +75,12 @@ public class PullRequestHoldService extends ServiceThread {
 
     @Override
     public void run() {
+        /**
+         * 如果开启长轮询，每5s 尝试一次，判断新消息是否到达。如果未开启长轮询，则默
+         * 认等待ls 再次尝试，可以通过BrokerConfig#shortPollingTimeMills 改变等待时间。PullRequestHold
+         * Service 的核心逻辑见Pul!RequestHo ldServ ice#checkHo ldRequest 。
+         */
+
         log.info("{} service started", this.getServiceName());
         while (!this.isStopped()) {
             try {
@@ -93,6 +109,10 @@ public class PullRequestHoldService extends ServiceThread {
         return PullRequestHoldService.class.getSimpleName();
     }
 
+    /**
+     * 遍历拉取任务表，根据主题与队列获取消息消费队列最大偏移量，如果该偏移量大于
+     * 待拉取偏移量， 说明有新的消息到达，调用notifyMessageArriving 触发消息拉取。
+     */
     private void checkHoldRequest() {
         for (String key : this.pullRequestTable.keySet()) {
             String[] kArray = key.split(TOPIC_QUEUEID_SEPARATOR);
@@ -137,6 +157,8 @@ public class PullRequestHoldService extends ServiceThread {
                         }
 
                         if (match) {
+                            // 如果消息队列的最大偏移量大于待拉取偏移量，如果消息匹配则调用executeRequest
+                            //When Wakeup 将消息返回给消息拉取客户端，否则等待下一次尝试。
                             try {
                                 this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
                                     request.getRequestCommand());
@@ -146,7 +168,7 @@ public class PullRequestHoldService extends ServiceThread {
                             continue;
                         }
                     }
-
+                    // 如果挂起超时时间超时， 则不继续等待将直接返回客户消息未找到。
                     if (System.currentTimeMillis() >= (request.getSuspendTimestamp() + request.getTimeoutMillis())) {
                         try {
                             this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),

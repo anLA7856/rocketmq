@@ -48,17 +48,22 @@ import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 
+/**
+ * 为了揭示消息消费的完整过程，从服务器拉取到消息后回调PullCallBack 回调方法后，
+ * 先将消息放入到ProccessQueue 中，然后把消息提交到消费线程池中执行，也就是调用Con
+ * sumeMessageService#submitConsumeRequest 开始进入到消息消费的世界中来。
+ */
 public class ConsumeMessageConcurrentlyService implements ConsumeMessageService {
     private static final InternalLogger log = ClientLogger.getLog();
-    private final DefaultMQPushConsumerImpl defaultMQPushConsumerImpl;
-    private final DefaultMQPushConsumer defaultMQPushConsumer;
-    private final MessageListenerConcurrently messageListener;
-    private final BlockingQueue<Runnable> consumeRequestQueue;
-    private final ThreadPoolExecutor consumeExecutor;
-    private final String consumerGroup;
+    private final DefaultMQPushConsumerImpl defaultMQPushConsumerImpl; // 消息推模式实现类。
+    private final DefaultMQPushConsumer defaultMQPushConsumer; // 消费者对象。
+    private final MessageListenerConcurrently messageListener;  // 并发消息业务事件类。
+    private final BlockingQueue<Runnable> consumeRequestQueue;  // 消息消费任务队列。
+    private final ThreadPoolExecutor consumeExecutor;  // 消息消费线程池。
+    private final String consumerGroup;  // 消费组。
 
-    private final ScheduledExecutorService scheduledExecutorService;
-    private final ScheduledExecutorService cleanExpireMsgExecutors;
+    private final ScheduledExecutorService scheduledExecutorService;  // 添加消费’任务到consumeExecutor延迟调度器。
+    private final ScheduledExecutorService cleanExpireMsgExecutors;   // 定时删除过期消息线程池。
 
     public ConsumeMessageConcurrentlyService(DefaultMQPushConsumerImpl defaultMQPushConsumerImpl,
         MessageListenerConcurrently messageListener) {
@@ -205,6 +210,15 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         final boolean dispatchToConsume) {
         final int consumeBatchSize = this.defaultMQPushConsumer.getConsumeMessageBatchMaxSize();
         if (msgs.size() <= consumeBatchSize) {
+            /**
+             * consumeMessageBatchMaxSize ，消息批次，在这里看来也就是一次消息消费
+             * 任务Con sumeRequest 中包含的消息条数，默认为1 , msgs . size（）默认最多为32 条，受
+             * D efaultMQP ushConsumer扣i llBatc h Size 属性控制，如果ms gs.size （）小于consum巳MessageB
+             * atchMaxS i ze ， 则直接将拉取到的消息放入到ConsumeRequest 中，然后将consumeRequest
+             * 提交到消息消费者线程池中，如果提交过程中出现拒绝提交异常则延迟5s 再提交，这里其
+             * 实是给出一种标准的拒绝提交实现方式，实际过程中由于消费者线程池使用的任务队列为
+             * LinkedB lo ckingQueue 无界队列，故不会出现拒绝提交异常。
+             */
             ConsumeRequest consumeRequest = new ConsumeRequest(msgs, processQueue, messageQueue);
             try {
                 this.consumeExecutor.submit(consumeRequest);
