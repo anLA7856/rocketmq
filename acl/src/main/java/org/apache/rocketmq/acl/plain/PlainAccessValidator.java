@@ -81,6 +81,7 @@ public class PlainAccessValidator implements AccessValidator {
                     accessResource.addResourceAndPerm(getRetryTopic(request.getExtFields().get("group")), Permission.SUB);
                     break;
                 case RequestCode.PULL_MESSAGE:
+                    // 消息拉取命令
                     accessResource.addResourceAndPerm(request.getExtFields().get("topic"), Permission.SUB);
                     accessResource.addResourceAndPerm(getRetryTopic(request.getExtFields().get("consumerGroup")), Permission.SUB);
                     break;

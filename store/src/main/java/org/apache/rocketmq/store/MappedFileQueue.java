@@ -353,6 +353,19 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 执行文件销毁与删除。从倒数第二个文件开始遍历，计算文件的最大存活时间（ ＝ 文件
+     * 的最后一次更新时间＋文件存活时间（默认72 小时）） ， 如果当前时间大于文件的最大存活
+     *
+     * 时间或需要强制删除文件（当磁盘使用超过设定的阔值）时则执行MappedFi Je#destory 方
+     * 法，清除MappedFile 占有的相关资源，如果执行成功，将该文件加入到待删除文件列表
+     * 中，然后统一执行File#delete 方法将文件从物理磁盘中删除。
+     * @param expiredTime
+     * @param deleteFilesInterval
+     * @param intervalForcibly
+     * @param cleanImmediately
+     * @return
+     */
     public int deleteExpiredFileByTime(final long expiredTime,
         final int deleteFilesInterval,
         final long intervalForcibly,

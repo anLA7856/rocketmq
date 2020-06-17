@@ -140,6 +140,26 @@ public class PullAPIWrapper {
         }
     }
 
+    /**
+     *
+     * @param mq 从哪个消息消费队列拉取消息。
+     * @param subExpression 消息过滤表达式。
+     * @param expressionType 消息表达式类型，分为TAG 、SQL92 。
+     * @param subVersion
+     * @param offset 消息拉取偏移量。
+     * @param maxNums 本次拉取最大消息条数，默认32 条。
+     * @param sysFlag 拉取系统标记。
+     * @param commitOffset 当前M巳ssageQueue 的消费进度（内存中） 。
+     * @param brokerSuspendMaxTimeMillis 消息拉取过程中允许Broker 挂起时间 15s 。
+     * @param timeoutMillis 消息拉取超时时间。
+     * @param communicationMode 消息拉取模式，默认为异步拉取。
+     * @param pullCallback 从Broker 拉取到消息后的回调方法。
+     * @return
+     * @throws MQClientException
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public PullResult pullKernelImpl(
         final MessageQueue mq,
         final String subExpression,
@@ -154,6 +174,9 @@ public class PullAPIWrapper {
         final CommunicationMode communicationMode,
         final PullCallback pullCallback
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        // 根据brokerName 、BrokerId 从MQClientlnstance 中获取Broker 地址，在整个
+        //RocketMQ Broker 的部署结构中，相同名称的Broker 构成主从结构，其BrokerId 会不一
+        //样，在每次拉取消息后，会给出一个建议，下次拉取从主节点还是从节点拉取，
         FindBrokerResult findBrokerResult =
             this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(),
                 this.recalculatePullFromWhichNode(mq), false);
@@ -191,6 +214,11 @@ public class PullAPIWrapper {
             requestHeader.setSubscription(subExpression);
             requestHeader.setSubVersion(subVersion);
             requestHeader.setExpressionType(expressionType);
+
+            // 如果消息过滤模式为类过滤， 则需要根据主题名称、broker 地址找到注册在
+            //Broker 上的F ilterS erver 地址，从F ilterServer 上拉取消息，否则从Broker 上拉取消息。
+            //上述步骤完成后， RocketMQ 通过MQClientAP IImpl# pu!IMess ageAsync 方法异步向
+            //Broker 拉取消息。
 
             String brokerAddr = findBrokerResult.getBrokerAddr();
             if (PullSysFlag.hasClassFilterFlag(sysFlagInner)) {

@@ -585,29 +585,44 @@ public class DefaultMessageStore implements MessageStore {
         long beginTime = this.getSystemClock().now();
 
         GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
-        long nextBeginOffset = offset;
-        long minOffset = 0;
-        long maxOffset = 0;
+        long nextBeginOffset = offset;  // ：待查找的队列偏移量。
+        long minOffset = 0;  // 当前消息队列最小偏移量。
+        long maxOffset = 0;  // 当前消息队列最大偏移量。
 
+        // 根据主题名称与队列编号获取消息消费队列。
         GetMessageResult getResult = new GetMessageResult();
 
-        final long maxOffsetPy = this.commitLog.getMaxOffset();
+        final long maxOffsetPy = this.commitLog.getMaxOffset();  // 当前commitlog 文件最大偏移量。
 
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
+
+            // 消息偏移量异常情况校对下一次拉取偏移量。
+
             minOffset = consumeQueue.getMinOffsetInQueue();
             maxOffset = consumeQueue.getMaxOffsetInQueue();
 
             if (maxOffset == 0) {
+                // 1 ) maxOffset = 0 ， 表示当前消费队列中没有消息，拉取结果： NO_MESSAGE_ IN_ QUEUE。
+                //如果当前Broker 为主节点或offsetChecklnS!ave 为也lse ， 下次拉取偏移量依然为offset。
+                //如果当前Broker 为从节点， offsetCheckinS!ave 为true ， 设置下次拉取偏移量为0 。
                 status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
                 nextBeginOffset = nextOffsetCorrection(offset, 0);
             } else if (offset < minOffset) {
+                // offset < minOffset ，表示待拉取消息偏移量小于队列的起始偏移量，拉取结果为：
+                //OFFSET TOO SMALL 。
+                //如果当前Broker 为主节点或offsetChecklnS!ave 为false ，下次拉取偏移量依然为offset。
+                //如果当前Broker 为从节点并且offsetChecklnS!ave 为true ，下次拉取偏移量设置为minOffseto
                 status = GetMessageStatus.OFFSET_TOO_SMALL;
                 nextBeginOffset = nextOffsetCorrection(offset, minOffset);
             } else if (offset == maxOffset) {
+                // offset == maxOffset ，如果待拉取偏移量等于队列最大偏移量，拉取结果：
+                //OFFSET OVE盯LOW ONE 。下次拉取偏移量依然为offset 。
                 status = GetMessageStatus.OFFSET_OVERFLOW_ONE;
                 nextBeginOffset = nextOffsetCorrection(offset, offset);
             } else if (offset > maxOffset) {
+                // Offset > maxOffset， 表示偏移量越界， 拉取结果： OFFSET_OVERFLOW BADLY 。
+                //根据是否是主节点、从节点，同样校对下次拉取偏移量。
                 status = GetMessageStatus.OFFSET_OVERFLOW_BADLY;
                 if (0 == minOffset) {
                     nextBeginOffset = nextOffsetCorrection(offset, minOffset);
@@ -1304,8 +1319,13 @@ public class DefaultMessageStore implements MessageStore {
         log.info(fileName + (result ? " create OK" : " already exists"));
     }
 
+    /**
+     * 包括过期文件删除机制
+     */
     private void addScheduleTask() {
 
+        // RocketMQ 会每隔10 s 调度一次c l eanFi lesPeriodi cally ， 检测是否需要清除过期文件。
+        //执行频率可以通过设置c leanReso urcelnterva l ，默认为10 s 。
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -1349,6 +1369,11 @@ public class DefaultMessageStore implements MessageStore {
         // }, 1, 1, TimeUnit.HOURS);
     }
 
+
+    // 分别执行清除消息存储文件（ C ommitlo g 文件）与消息消费队列文件（ ConsumeQueue
+    //文件） 。由于消息消费队列文件与消息存储文件（ Commitlo g ）共用一套过期文件删除机制，
+    //本书将重点讲解消息存储过期文件删除。实现方法： DefaultMe ss age S tore$C lean C ommitLo g
+    //Serv i ce#deleteExpiredFiles 。
     private void cleanFilesPeriodically() {
         this.cleanCommitLogService.run();
         this.cleanConsumeQueueService.run();
@@ -1614,9 +1639,14 @@ public class DefaultMessageStore implements MessageStore {
     class CleanCommitLogService {
 
         private final static int MAX_MANUAL_DELETE_FILE_TIMES = 20;
+        // 通过系统参数－Drocketmq. broker.diskSpace WamingLevelRatio
+        //设置，默认0 . 90 。如果磁盘分区使用率超过该阔值，将设置磁盘不可写， 此时会拒绝新消息
+        //的写人。
         private final double diskSpaceWarningLevelRatio =
             Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceWarningLevelRatio", "0.90"));
-
+        // ：通过系统参数－Drocketmq. broker. diskSpaceCleanF orcib ly Ratio
+        //设置， 默认0 . 85 。如果磁盘分区使用超过该阔值，建议立即执行过期文件清除，但不会拒绝
+        //新消息的写入。
         private final double diskSpaceCleanForciblyRatio =
             Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceCleanForciblyRatio", "0.85"));
         private long lastRedeleteTimestamp = 0;
@@ -1640,18 +1670,36 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        /**
+         * 过期文件删除机制
+         */
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            // 文件保留时间， 也就是从最后一次更新时间到现在， 如果超过了
+            //该时间， 则认为是过期文件， 可以被删除。
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+            // 删除物理文件的间隔，因为在一次清除过程中， 可能需
+            //要被删除的文件不止一个，该值指定两次删除文件的问隔时间。
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+            // 在清除过期文件时， 如果该文件被其他线程所占
+            //用（引用次数大于0 ， 比如读取消息）， 此时会阻止此次删除任务， 同时在第一次试图删除该
+            //文件时记录当前时间戳， destroyMap e dF i l e lntervalF orcibly 表示第一次拒绝删除之后能保留
+            //的最大时间，在此时间内， 同样可以被拒绝删除， 同时会将引用减少1000 个，超过该时间
+            //间隔后，文件将被强制删除。
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
+            // 指定删除文件的时间点， RocketMQ 通过delete When 设置一天的固定时间执行一次
+            //删除过期文件操作， 默认为凌晨4 点。
             boolean timeup = this.isTimeToDelete();
+            // ）磁盘空间是否充足，如果磁盘空间不充足，则返回true ，表示应该触发过期文件删
+            //除操作。
             boolean spacefull = this.isSpaceToDelete();
+            // 预留，手工触发，可以通过调用excuteDeleteFilesManualy 方法手工触发过期文件
+            //删除，目前RocketMQ 暂未封装手工触发文件删除的命令。
             boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
 
             if (timeup || spacefull || manualDelete) {
-
+                //  继续执行删除逻辑
                 if (manualDelete)
                     this.manualDeleteFileSeveralTimes--;
 
@@ -1665,7 +1713,7 @@ public class DefaultMessageStore implements MessageStore {
                     cleanAtOnce);
 
                 fileReservedTime *= 60 * 60 * 1000;
-
+                // 删除
                 deleteCount = DefaultMessageStore.this.commitLog.deleteExpiredFile(fileReservedTime, deletePhysicFilesInterval,
                     destroyMapedFileIntervalForcibly, cleanAtOnce);
                 if (deleteCount > 0) {
@@ -1702,13 +1750,27 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         private boolean isSpaceToDelete() {
+
+            // diskMaxUsedSpaceRatio: 表示c ommitlog 、consumequeue 文件所在磁盘分区的最大使用量，如果超过该值， 则需要立即清除过期文件。
             double ratio = DefaultMessageStore.this.getMessageStoreConfig().getDiskMaxUsedSpaceRatio() / 100.0;
 
-            cleanImmediately = false;
+            cleanImmediately = false;  // 表示是否需要立即执行清除过期文件操作
 
             {
                 String storePathPhysic = DefaultMessageStore.this.getMessageStoreConfig().getStorePathCommitLog();
+                // 当前commitlog 目录所在的磁盘分区的磁盘使用率，通过File # getTotalSpace
+                //（）获取文件所在磁盘分区的总容量，通过File#getFreeSpace （） 获取文件所在磁盘分区
+                //剩余容量。
                 double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathPhysic);
+
+                /**
+                 * 如果当前磁盘分区使用率大于diskSpace WarningLeve!Ratio ，设置磁盘不可写，应
+                 * 该立即启动过期文件删除操作；如果当前磁盘分区使用率大于diskSpaceCleanForciblyRatio,
+                 * 建议立即执行过期文件清除；如果磁盘使用率低于diskSpaceCl eanF orcibly Ratio 将恢复磁盘
+                 * 可写；如果当前磁盘使用率小于diskMax U sedSpaceRatio 则返回false ，表示磁盘使用率正
+                 * 常，否则返回true ， 需要执行清除过期文件。
+                 */
+
                 if (physicRatio > diskSpaceWarningLevelRatio) {
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
                     if (diskok) {
