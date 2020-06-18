@@ -148,6 +148,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             return CompletableFuture.completedFuture(response);
         }
 
+        // 创建重试主题，重试主题名称： %RETRY%＋消费组名称，并从重试队列中随
+        //机选择一个队列，并构建TopicConfig 主题配置信息。
         String newTopic = MixAll.getRetryTopic(requestHeader.getGroup());
         int queueIdInt = Math.abs(this.random.nextInt() % 99999999) % subscriptionGroupConfig.getRetryQueueNums();
         int topicSysFlag = 0;
@@ -170,6 +172,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             response.setRemark(String.format("the topic[%s] sending message is forbidden", newTopic));
             return CompletableFuture.completedFuture(response);
         }
+
+        // 根据消息物理偏移量从commitlog 文件中获取消息， 同时将消息的主题存入属
+        //性中。
         MessageExt msgExt = this.brokerController.getMessageStore().lookMessageByOffset(requestHeader.getOffset());
         if (null == msgExt) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -177,6 +182,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             return CompletableFuture.completedFuture(response);
         }
 
+        // 设置消息重试次数， 如果消息已重试次数超过maxReconsumeTimes ，再次改变
+        //newTopic 主题为DLQ （” %DLQ%”），该主题的权限为只写，说明消息一旦进入到DLQ 队
+        //列中， RocketMQ 将不负责再次调度进行消费了， 需要人工干预。
         final String retryTopic = msgExt.getProperty(MessageConst.PROPERTY_RETRY_TOPIC);
         if (null == retryTopic) {
             MessageAccessor.putProperty(msgExt, MessageConst.PROPERTY_RETRY_TOPIC, msgExt.getTopic());
@@ -210,6 +218,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             msgExt.setDelayTimeLevel(delayLevel);
         }
 
+        // 根据原先的消息创建一个新的消息对象，重试消息会拥有自己的唯一消息ID
+        //( ms gld ）并存人到comm i tlo g 文件中，并不会去更新原先消息， 而是会将原先的主题、消息
+        //ID 存入消息的属性中， 主题名称为重试主题， 其他属性与原先消息保持相同。
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setTopic(newTopic);
         msgInner.setBody(msgExt.getBody());

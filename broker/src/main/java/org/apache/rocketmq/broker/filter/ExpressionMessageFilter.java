@@ -59,6 +59,13 @@ public class ExpressionMessageFilter implements MessageFilter {
 
     @Override
     public boolean isMatchedByConsumeQueue(Long tagsCode, ConsumeQueueExt.CqExtUnit cqExtUnit) {
+        /**
+         * 如果订阅消息为空，返回true ，不过滤；如果是类过滤模式，返回true ；如果是TAG
+         * 过滤模式，并且消息的tagsCode 为空或tagsCode 小于0 ，返回true ，说明消息在发送时没
+         * 有设置tag 。如果订阅消息的TAG hashcodes 集合中包含消息的tag sCode ，返回true 。基于
+         * TAG 模式，根据ConsumeQueue 进行消息过滤时只对比tag 的hash code ，所以基于TAG 模
+         * 式消息过滤，还需要在消息消费端对消息tag 进行精确匹配。
+         */
         if (null == subscriptionData) {
             return true;
         }
@@ -116,6 +123,10 @@ public class ExpressionMessageFilter implements MessageFilter {
 
     @Override
     public boolean isMatchedByCommitLog(ByteBuffer msgBuffer, Map<String, String> properties) {
+        // 如果订阅信息为空，返回true ；如果是类过滤模式，返回true ；如果是TAG 模式，返
+        //回true 。该方法主要是为表达式模式SQL92 服务的，根据消息属性实现类似于数据库SQL
+        //where 条件过滤方式。本书将不针对SQL92 模式消息过滤详细讲解，但在第9 章会给出
+        //SQL92 过滤实例。
         if (subscriptionData == null) {
             return true;
         }

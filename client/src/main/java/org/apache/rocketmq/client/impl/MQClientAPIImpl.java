@@ -1131,6 +1131,20 @@ public class MQClientAPIImpl {
         return response.getCode() == ResponseCode.SUCCESS;
     }
 
+    /**
+     * 如果消息监听器返回的消费结果为RECONSUME LATER ，则需要将这些消息发送
+     * 给Broker 延迟消息。如果发送ACK 消息失败，将延迟Ss 后提交线程池进行消费。ACK
+     * 消息发送的网络客户端人口
+     * @param addr
+     * @param msg
+     * @param consumerGroup
+     * @param delayLevel
+     * @param timeoutMillis
+     * @param maxConsumeRetryTimes
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public void consumerSendMessageBack(
         final String addr,
         final MessageExt msg,

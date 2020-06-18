@@ -79,6 +79,12 @@ public class PullAPIWrapper {
             List<MessageExt> msgListFilterAgain = msgList;
             if (!subscriptionData.getTagsSet().isEmpty() && !subscriptionData.isClassFilterMode()) {
                 msgListFilterAgain = new ArrayList<MessageExt>(msgList.size());
+                /**
+                 * 从消息拉取流程知道，消息拉取线程PullMessageService 默认会使用异步方式从服务器
+                 * 拉取消息，消息消费端会通过Pu llAPIWrapper 从响应结果解析出拉取到的消息。如果消息
+                 * 过滤模式为TAG 模式，并且订阅TAG 集合不为空，则对消息的tag 进行判断，如果集合中
+                 * 包含消息的TAG 则返回给消费者消费，否则跳过。
+                 */
                 for (MessageExt msg : msgList) {
                     if (msg.getTags() != null) {
                         if (subscriptionData.getTagsSet().contains(msg.getTags())) {

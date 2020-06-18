@@ -673,7 +673,8 @@ public class DefaultMessageStore implements MessageStore {
                                     isTagsCodeLegal = false;
                                 }
                             }
-
+                            // 根据偏移量拉取消息后， 首先根据ConsumeQueue 条目进行消息过滤，如果不
+                            //匹配则直接跳过该条消息，继续拉取下一条消息。
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByConsumeQueue(isTagsCodeLegal ? tagsCode : null, extRet ? cqExtUnit : null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -692,7 +693,11 @@ public class DefaultMessageStore implements MessageStore {
                                 nextPhyFileStartOffset = this.commitLog.rollNextFile(offsetPy);
                                 continue;
                             }
-
+                            // 如果消息根据ConsumeQueue 条目通过过滤，则需要从CommitLog 文件中加
+                            //载整个消息体，然后根据属性进行过滤。当然如果过滤方式是TAG 模式，该方法默认返回
+                            //true ，下文会对该方法详细讲解。
+                            //至此消息在消费拉取服务端的消息过滤流程就基本结束了， RocketMQ 会在消息接收端
+                            //再次进行消息过滤。
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByCommitLog(selectResult.getByteBuffer().slice(), null)) {
                                 if (getResult.getBufferTotalSize() == 0) {

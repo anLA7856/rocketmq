@@ -854,6 +854,18 @@ public class CommitLog {
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE
             || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
+            /**
+             * 在存入Commitlog 文件之前，如果消息的延迟级别delayTim巳Level 大于0 ， 替换消
+             * 息的主题与队列为定时任务主题“ SCHEDULE TOPIC XXXX ”，队列ID 为延迟级别减
+             * 1 。再次将消息主题、队列存入消息的属性中，键分别为： PROPERTY REAL TOPIC 、
+             * PROPERTY REAL QUEUE_ID 。
+             * ACK 消息存入CommitLog 文件后，将依托RocketMQ 定时消息机制在延迟时间到期
+             * 后再次将消息拉取，提交消费线程池，
+             *
+             * ACK 消息
+             * 是同步发送的，如果在发送过程中出现错误，将记录所有发送ACK 消息失败的消息，然后
+             * 再次封装成ConsumeRequest ，延迟Ss 执行。
+             */
             if (msg.getDelayTimeLevel() > 0) {
                 if (msg.getDelayTimeLevel() > this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel()) {
                     msg.setDelayTimeLevel(this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel());

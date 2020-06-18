@@ -247,7 +247,9 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             response.setRemark("The broker does not support consumer to filter message by " + subscriptionData.getExpressionType());
             return response;
         }
-
+        // 构建消息过滤对象， ExpressionForRetryMessageFilt町，支持对重试主题的过
+        //滤， ExpressionMessageFilter ，不支持对重试主题的属性过滤，也就是如果是tag 模式，执
+        //行isMatchedByCommitLog 方法将直接返回true 。
         MessageFilter messageFilter;
         if (this.brokerController.getBrokerConfig().isFilterSupportRetry()) {
             messageFilter = new ExpressionForRetryMessageFilter(subscriptionData, consumerFilterData,
