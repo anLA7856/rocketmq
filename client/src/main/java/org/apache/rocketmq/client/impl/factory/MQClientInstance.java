@@ -1045,6 +1045,13 @@ public class MQClientInstance {
         return null;
     }
 
+    /**
+     *
+     * @param brokerName  Broker 名称。
+     * @param brokerId  Broker Id 。
+     * @param onlyThisBroker  是否必须返回brokerId 的Broker 对应的服务器信息。
+     * @return
+     */
     public FindBrokerResult findBrokerAddressInSubscribe(
         final String brokerName,
         final long brokerId,
@@ -1053,7 +1060,8 @@ public class MQClientInstance {
         String brokerAddr = null;
         boolean slave = false;
         boolean found = false;
-
+        // 从ConcurrentMap < String/* Broker Name 町， HashMap<Long/* brokerld 灯， String/*
+        //addr巳ss */>> brokerAddrTable 地址缓存表中根据brokerName 获取所有的Broker 信息。
         HashMap<Long/* brokerId */, String/* address */> map = this.brokerAddrTable.get(brokerName);
         if (map != null && !map.isEmpty()) {
             brokerAddr = map.get(brokerId);

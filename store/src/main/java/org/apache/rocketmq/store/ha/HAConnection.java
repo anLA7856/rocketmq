@@ -28,16 +28,22 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 
+
+/**
+ * HA Master 服务端HA 连接对象的封装，与Broker 从服务器的网络 读写实现类。
+ * Master 服务器在收到从服务器的连接请求后，会将主从服务器的连接SocketChannel 封
+ * 装成HA Connection 对象，实现主服务器与从服务器的读写操作。
+ */
 public class HAConnection {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
-    private final HAService haService;
-    private final SocketChannel socketChannel;
-    private final String clientAddr;
-    private WriteSocketService writeSocketService;
-    private ReadSocketService readSocketService;
+    private final HAService haService;  // HAService 对象。
+    private final SocketChannel socketChannel;  // 网络socket 通道。
+    private final String clientAddr;  // 客户端连接地址。
+    private WriteSocketService writeSocketService;  // 服务端向从服务器写数据服务类。
+    private ReadSocketService readSocketService;  // 服务端从从服务器读数据服务类。
 
-    private volatile long slaveRequestOffset = -1;
-    private volatile long slaveAckOffset = -1;
+    private volatile long slaveRequestOffset = -1;  // 从服务器请求拉取数据的偏移量。
+    private volatile long slaveAckOffset = -1;  // 从服务器反馈已拉取完成的数据偏移量。
 
     public HAConnection(final HAService haService, final SocketChannel socketChannel) throws IOException {
         this.haService = haService;
@@ -78,14 +84,22 @@ public class HAConnection {
         return socketChannel;
     }
 
+    /**
+     * HA Master 网络读实现类。
+     */
     class ReadSocketService extends ServiceThread {
-        private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024;
-        private final Selector selector;
-        private final SocketChannel socketChannel;
-        private final ByteBuffer byteBufferRead = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
-        private int processPosition = 0;
-        private volatile long lastReadTimestamp = System.currentTimeMillis();
+        private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024;   // 网络读缓存区大小，默认为lM 。
+        private final Selector selector;   // NIO 网络事件选择器。
+        private final SocketChannel socketChannel;   // 网络通道，用于读写的socket 通道。
+        private final ByteBuffer byteBufferRead = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);   // ：网络读写缓存区，默认为IM 。
+        private int processPosition = 0;  // byteBuffer 当前处理指针。
+        private volatile long lastReadTimestamp = System.currentTimeMillis();   // 上次读取数据的时间戳。
 
+        /**
+         * HA Connection 的网络读请求由其内部类ReadSocketService 线程来实现，
+         * @param socketChannel
+         * @throws IOException
+         */
         public ReadSocketService(final SocketChannel socketChannel) throws IOException {
             this.selector = RemotingUtil.openSelector();
             this.socketChannel = socketChannel;
@@ -145,9 +159,19 @@ public class HAConnection {
             return ReadSocketService.class.getSimpleName();
         }
 
+        /**
+         * 通过观察其run 方法，每隔l s 处理一次读就绪事件，每次读请求调用其processReadEvent
+         * 来解析从服务器的拉取请求。
+         * @return
+         */
         private boolean processReadEvent() {
             int readSizeZeroTimes = 0;
 
+            /**
+             * 如果byteBufferRead 没有剩余空间，说明该position==limit==capacity ，调用
+             * byteBufferRead. flip （）方法， 产生的效果为position=O,limit=capacity 并设置processPostion
+             * 为0 ，表示从头开始处理， 其实这里调用byteBuffer.clear（）方法会更加容易理解。
+             */
             if (!this.byteBufferRead.hasRemaining()) {
                 this.byteBufferRead.flip();
                 this.processPosition = 0;
@@ -155,8 +179,12 @@ public class HAConnection {
 
             while (this.byteBufferRead.hasRemaining()) {
                 try {
+                    // ／／ 处理网络读
                     int readSize = this.socketChannel.read(this.byteBufferRead);
                     if (readSize > 0) {
+                        // ：如果读取的字节大于0 并且本次读取到的内容大于等于8 ，表明收到了从服务
+                        //器一条拉取消息的请求。由于有新的从服务器反馈拉取偏移量， 服务端会通知由于同步等
+                        //待HA 复制结果而阻塞的消息发送者线程。
                         readSizeZeroTimes = 0;
                         this.lastReadTimestamp = HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now();
                         if ((this.byteBufferRead.position() - this.processPosition) >= 8) {
@@ -173,6 +201,8 @@ public class HAConnection {
                             HAConnection.this.haService.notifyTransferSome(HAConnection.this.slaveAckOffset);
                         }
                     } else if (readSize == 0) {
+                        // 如果读取到的字节数等于0 ，则重复三次，否则结束本次读请求处理；如果读取
+                        //到的字节数小于0 ，表示连接处于半关闭状态， 返回false 则意味着消息服务器将关闭该链接。
                         if (++readSizeZeroTimes >= 3) {
                             break;
                         }
@@ -190,16 +220,19 @@ public class HAConnection {
         }
     }
 
+    /**
+     * HA Master 网络写实现类。
+     */
     class WriteSocketService extends ServiceThread {
-        private final Selector selector;
-        private final SocketChannel socketChannel;
+        private final Selector selector;   // NIO 网络事件选择器。
+        private final SocketChannel socketChannel;   // 网络socket 通道。
 
-        private final int headerSize = 8 + 4;
+        private final int headerSize = 8 + 4;   // 消息头长度， 消息物理偏移量＋ 消息长度。
         private final ByteBuffer byteBufferHeader = ByteBuffer.allocate(headerSize);
-        private long nextTransferFromWhere = -1;
-        private SelectMappedBufferResult selectMappedBufferResult;
-        private boolean lastWriteOver = true;
-        private long lastWriteTimestamp = System.currentTimeMillis();
+        private long nextTransferFromWhere = -1;  // 下一次传输的物理偏移量。
+        private SelectMappedBufferResult selectMappedBufferResult;   // 根据偏移量查找消息的结果。
+        private boolean lastWriteOver = true;   // 上一次数据是否传输完毕。
+        private long lastWriteTimestamp = System.currentTimeMillis();   // 上次写入的时间戳。
 
         public WriteSocketService(final SocketChannel socketChannel) throws IOException {
             this.selector = RemotingUtil.openSelector();
@@ -215,12 +248,20 @@ public class HAConnection {
             while (!this.isStopped()) {
                 try {
                     this.selector.select(1000);
-
+                    /**
+                     * ！：如果slaveRequestOffset 等于一1 ， 说明Master 还未收到从服务器的拉取请求，
+                     * 放弃本次事件处理。slaveRequestOffset 在收到从服务器拉取请求时更新。
+                     */
                     if (-1 == HAConnection.this.slaveRequestOffset) {
                         Thread.sleep(10);
                         continue;
                     }
 
+                    /**
+                     * 如果nextTransf1巳rFromWhere 为一1 ，表示初次进行数据传输，计算待传输的物
+                     * 理偏移量，如果slaveRequestOffset 为0 ，则从当前commitlog 文件最大偏移量开始传输，
+                     * 否则根据从服务器的拉取请求偏移量开始传输。
+                     */
                     if (-1 == this.nextTransferFromWhere) {
                         if (0 == HAConnection.this.slaveRequestOffset) {
                             long masterOffset = HAConnection.this.haService.getDefaultMessageStore().getCommitLog().getMaxOffset();
@@ -242,6 +283,17 @@ public class HAConnection {
                             + "], and slave request " + HAConnection.this.slaveRequestOffset);
                     }
 
+                    /**
+                     * ：判断上次写事件是否已将信息全部写人客户端。
+                     *
+                     * 如果已全部写入，且当前系统时间与上次最后写人的时间间隔大于HA 心跳检测
+                     * 时间，则发送一个心跳包，心跳包的长度为12 个字节（从服务器待拉取偏移量＋size ), r肖
+                     * 息长度默认为0 ，避免长连接由于空闲被关闭。HA 心跳包发送间隔通过haSendHeartbeatInterval
+                     * 放置，默认值为5s 。
+                     *
+                     * 2 ） 如果上次数据未写完， 则先传输上一次的数据，如果消息还是未全部传输，则结束
+                     * 此次事件处理。
+                     */
                     if (this.lastWriteOver) {
 
                         long interval =
@@ -266,6 +318,20 @@ public class HAConnection {
                         if (!this.lastWriteOver)
                             continue;
                     }
+
+
+                    /**
+                     * ：传输消息到从服务器。
+                     *
+                     *
+                     * 1 ）根据消息从服务器请求的待拉取偏移量查找该偏移量之后所有的可读消息，如果
+                     * 未查到匹配的消息，通知所有等待线程继续等待lOOms 。
+                     * 2 ）如果匹配到消息，且查找到的消息总长度大于配置HA 传输一次同步任务最大传
+                     * 输的字节数，则通过设置ByteBuffer 的limit 来控制只传输指定长度的字节，这就意味着
+                     * HA 客户端收到的消息会包含不完整的消息。HA 一批次传输消息最大字节通过haTransferBatchSize
+                     * 设置， 默认值为32K 。
+                     * HA 服务端消息的传输一直以上述步骤循环运行， 每次事件处理完成后等待ls 。
+                     */
 
                     SelectMappedBufferResult selectResult =
                         HAConnection.this.haService.getDefaultMessageStore().getCommitLogData(this.nextTransferFromWhere);

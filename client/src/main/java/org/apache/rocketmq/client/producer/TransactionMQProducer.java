@@ -23,12 +23,14 @@ import org.apache.rocketmq.common.protocol.NamespaceUtil;
 import org.apache.rocketmq.remoting.RPCHook;
 
 public class TransactionMQProducer extends DefaultMQProducer {
+    // 事务监听器，主要定义实现本地事务状态
+    //执行、本地事务状态回查两个接口。
     private TransactionCheckListener transactionCheckListener;
     private int checkThreadPoolMinSize = 1;
     private int checkThreadPoolMaxSize = 1;
     private int checkRequestHoldMax = 2000;
 
-    private ExecutorService executorService;
+    private ExecutorService executorService;  // 事务状态回查异步执行线程池。
 
     private TransactionListener transactionListener;
 
@@ -71,6 +73,8 @@ public class TransactionMQProducer extends DefaultMQProducer {
     @Deprecated
     public TransactionSendResult sendMessageInTransaction(final Message msg,
         final LocalTransactionExecuter tranExecuter, final Object arg) throws MQClientException {
+        // 如果事件监昕器为空， 则直接返回异常，最终调用DefaultMQProducerlmpl 的sendMessagelnTransaction
+        //方法。
         if (null == this.transactionCheckListener) {
             throw new MQClientException("localTransactionBranchCheckListener is null", null);
         }
