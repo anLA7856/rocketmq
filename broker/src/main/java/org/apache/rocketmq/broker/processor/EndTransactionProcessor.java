@@ -122,6 +122,24 @@ public class EndTransactionProcessor extends AsyncNettyRequestProcessor implemen
                     return null;
             }
         }
+
+        /**
+         * 如果结束事务动作为提交事务，则执行提交事务逻辑，其关键实现如下。
+         * 1 ）首先从结束事务请求命令中获取消息的物理偏移量（ commitlogOffset ），其实现逻辑
+         * 由TransactionalMessageService#.commitMessage 实现。
+         * 2 ）然后恢复消息的主题、消费队列，构建新的消息对象，由TransactionalMessageService#
+         * endMessageTransaction 实现。
+         * 3 ）然后将消息再次存储在commitlog 文件中，此时的消息主题则为业务方发送的消
+         * 息，将被转发到对应的消息消费队列，供消息消费者消费，其实现由TransactionalMessageService#
+         * sendFinalMessage 实现。
+         * 4 ）消息存储后，删除prepare 消息，其实现方法并不是真正的删除，而是将prepare 消
+         * 息存储到RMQ_SYS_TRANS_OP_HALF TOPIC 主题中，表示该事务消息（ prepare 状态的
+         * 消息）已经处理过（提交或回滚），为未处理的事务进行事务回查提供查找依据。
+         * 事务的回滚与提交的唯一差别是无须将消息恢复原主题，直接删除prepare 消息即可，
+         * 同样是将预处理消息存储在RMQ_SYS_TRANS_OP_HALF TOPIC 主题中，表示已处理过
+         * 该消息。
+         */
+
         OperationResult result = new OperationResult();
         if (MessageSysFlag.TRANSACTION_COMMIT_TYPE == requestHeader.getCommitOrRollback()) {
             result = this.brokerController.getTransactionalMessageService().commitMessage(requestHeader);

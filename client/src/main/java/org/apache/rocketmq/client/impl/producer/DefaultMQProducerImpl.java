@@ -1360,6 +1360,11 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         } else {
             id = MessageDecoder.decodeMessageId(sendResult.getMsgId());
         }
+        /**
+         * 根据消息所属的消息队列获取Broker 的IP 与端口信息，然后发送结束事务命令，其关
+         * 键就是根据本地执行事务的状态分别发送提交、回滚或“不作为”的命令。Broker 服务端
+         * 的结束事务处理器为： EndTransactionProcessor 。
+         */
         String transactionId = sendResult.getTransactionId();
         final String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(sendResult.getMessageQueue().getBrokerName());
         EndTransactionRequestHeader requestHeader = new EndTransactionRequestHeader();
