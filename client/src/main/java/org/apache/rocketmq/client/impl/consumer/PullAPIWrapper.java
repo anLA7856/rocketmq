@@ -246,6 +246,9 @@ public class PullAPIWrapper {
         throw new MQClientException("The broker[" + mq.getBrokerName() + "] not exist", null);
     }
 
+    // 从ConcurrentMap <MessageQueue, AtomicLong/* brokerld */> pul!FromWhichNodeTable
+    //缓存表中获取该消息消费队列的brok巳rid ，如果找到， 则返回，否则返回brokerName 的主
+    //节点。
     public long recalculatePullFromWhichNode(final MessageQueue mq) {
         if (this.isConnectBrokerByUser()) {
             return this.defaultBrokerId;

@@ -104,6 +104,10 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
 
     /**
      * 服务端对拉取消息 处理
+     *
+     * RocketMQ 读写分离与其他中间件的实现方式完全不同， RocketMQ 是消费者首先向主
+     * 服务器发起拉取消息请求，然后主服务器返回一批消息，然后会根据主服务器负载压力与
+     * 主从同步情况，向从服务器建议下次消息拉取是从主服务器还是从从服务器拉取。
      * @param channel
      * @param request
      * @param brokerAllowSuspend
@@ -271,6 +275,9 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             responseHeader.setMinOffset(getMessageResult.getMinOffset());
             responseHeader.setMaxOffset(getMessageResult.getMaxOffset());
 
+            // 如果主服务器繁忙则建议下一次从从服务器拉取消息，设置suggestWhichBrokerld 为
+            //配置文件中whichBrokerWhenConsumeSlowly 属性，默认为1 。如果一个Master 拥有多台
+            //Slav巳服务器，参与消息拉取负载的从服务器只会是其中一个。
             if (getMessageResult.isSuggestPullingFromSlave()) {
                 responseHeader.setSuggestWhichBrokerId(subscriptionGroupConfig.getWhichBrokerWhenConsumeSlowly());
             } else {

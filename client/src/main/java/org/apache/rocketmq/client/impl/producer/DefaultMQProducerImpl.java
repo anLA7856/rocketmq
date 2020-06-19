@@ -764,7 +764,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                     sysFlag |= MessageSysFlag.COMPRESSED_FLAG;
                     msgBodyCompressed = true;
                 }
-
+                /**
+                 * 在消息发送之前， 如果消息为prepare 类型，则设置消息标准为prepare 消息类型，方
+                 * 便消息服务器正确识别事务类型的消息。
+                 */
                 final String tranMsg = msg.getProperty(MessageConst.PROPERTY_TRANSACTION_PREPARED);  // 如果是事务的pre消息
                 if (tranMsg != null && Boolean.parseBoolean(tranMsg)) {
                     sysFlag |= MessageSysFlag.TRANSACTION_PREPARED_TYPE;
@@ -1248,6 +1251,14 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
         Validators.checkMessage(msg, this.defaultMQProducer);
 
+
+        /**
+         * 首先为消息添加属性， TRAN_MSG 和PGROUP ，分别表示消息为prepare 消息、
+         * 消息所属消息生产者组。设置消息生产者组的目的是在查询事务消息本地事务状态时，从
+         * 该生产者组中随机选择一个消息生产者即可，然后通过同步调用方式向RocketMQ 发送消
+         * 息，其发送消息的流程在第2 章中有详细的分析，在本章稍后会重点关注针对事务消息所
+         * 做的特殊处理。
+         */
         SendResult sendResult = null;
         MessageAccessor.putProperty(msg, MessageConst.PROPERTY_TRANSACTION_PREPARED, "true");
         MessageAccessor.putProperty(msg, MessageConst.PROPERTY_PRODUCER_GROUP, this.defaultMQProducer.getProducerGroup());
@@ -1256,6 +1267,18 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         } catch (Exception e) {
             throw new MQClientException("send message Exception", e);
         }
+
+
+        /**
+         * 根据消息发送结果执行相应的操作。
+         * 1 ） 如果消息发送成功， 则执行TransactionListener #exe cuteLocalTrans action 方法，该
+         * 方法的职责是记录事务消息的本地事务状态， 例如可以通过将消息唯一ID 存储在数据中，
+         * 并且该方法与业务代码处于同一个事务，与业务事务要么一起成功，要么一起失败。这里
+         * 是事务消息设计的关键理念之一， 为后续的事务状态回查提供唯一依据。
+         *
+         * 如果消息发送失败，则设置本次事务状态为LocalTrans actionState . ROLLBACK
+         * MESSAGE 。
+         */
 
         LocalTransactionState localTransactionState = LocalTransactionState.UNKNOW;
         Throwable localException = null;
@@ -1300,6 +1323,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
 
         try {
+            // ：结束事务。根据第二步返回的事务状态执行提交、回滚或暂时不处理事务。
+            //1) LocalTransactionState.COMMIT MESSAGE ： 提交事务。
+            //2 ) LocalTransactionState.COMMIT MESSAGE ：回滚事务。
+            //3) LocalTransactionState .UNKNOW ： 结束事务，但不做任何处理。
             this.endTransaction(sendResult, localTransactionState, localException);
         } catch (Exception e) {
             log.warn("local transaction execute " + localTransactionState + ", but end broker transaction failed", e);
