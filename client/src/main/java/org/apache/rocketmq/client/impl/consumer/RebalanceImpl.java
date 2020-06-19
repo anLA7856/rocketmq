@@ -115,6 +115,12 @@ public abstract class RebalanceImpl {
         }
     }
 
+    /**
+     * ConcurrentMap< MessageQueue, Process Queue> processQueueTable ， 将消息队列
+     * 按照Broker 组织成Map < String/*brokerName* , Set<MessageQu巳ue＞＞ ，方便下一步向Broker
+     * 发送锁定消息、队列请求。
+     * @return
+     */
     private HashMap<String/* brokerName */, Set<MessageQueue>> buildProcessQueueTableByBrokerName() {
         HashMap<String, Set<MessageQueue>> result = new HashMap<String, Set<MessageQueue>>();
         for (MessageQueue mq : this.processQueueTable.keySet()) {
@@ -163,6 +169,10 @@ public abstract class RebalanceImpl {
         return false;
     }
 
+    /**
+     * ：向Broker ( Master 主节点）发送锁定消息队列， 该方法返回成功被当前消费者
+     * 锁定的消息消费队列。
+     */
     public void lockAll() {
         HashMap<String, Set<MessageQueue>> brokerMqs = this.buildProcessQueueTableByBrokerName();
 
@@ -186,6 +196,10 @@ public abstract class RebalanceImpl {
                     Set<MessageQueue> lockOKMQSet =
                         this.mQClientFactory.getMQClientAPIImpl().lockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000);
 
+                    /**
+                     * 将成功锁定的消息消费队列相对应的处理队列设置为锁定状态，同时更新加锁
+                     * 时间。
+                     */
                     for (MessageQueue mq : lockOKMQSet) {
                         ProcessQueue processQueue = this.processQueueTable.get(mq);
                         if (processQueue != null) {
@@ -197,6 +211,10 @@ public abstract class RebalanceImpl {
                             processQueue.setLastLockTimestamp(System.currentTimeMillis());
                         }
                     }
+                    /**
+                     * 遍历当前处理队列中的消息消费队列，如果当前消费者不持有该消息队列的锁，
+                     * 将处理队列锁状态设置为false ，暂停该消息消费队列的消息拉取与消息消费。
+                     */
                     for (MessageQueue mq : mqs) {
                         if (!lockOKMQSet.contains(mq)) {
                             ProcessQueue processQueue = this.processQueueTable.get(mq);
@@ -348,6 +366,10 @@ public abstract class RebalanceImpl {
     }
 
     /**
+     *
+     * 同一个消息消费队列在同一
+     * 时刻只会被消费组内一个消费者消费， 一个消费者同一时刻可以分配多个消费队列。
+     *
      * @param topic
      * @param mqSet
      * @param isOrder

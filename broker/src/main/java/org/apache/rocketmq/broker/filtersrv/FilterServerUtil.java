@@ -24,6 +24,10 @@ public class FilterServerUtil {
     public static void callShell(final String shellString, final InternalLogger log) {
         Process process = null;
         try {
+            /**
+             * 利用Runtime .get Runtime（） 直接指向shell 脚本，这里主要是向读者展示一下
+             * JAVA 调用s hell 脚本的一种实现方法。
+             */
             String[] cmdArray = splitShellString(shellString);
             process = Runtime.getRuntime().exec(cmdArray);
             process.waitFor();

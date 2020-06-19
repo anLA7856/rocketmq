@@ -305,6 +305,10 @@ public class ProcessQueue {
 
     /**
      * 将msgTreeMapTmp 中的消息清除，表示成功处理该批消息。
+     *
+     * ，然后将该批消息从msgTreeMapTemp 中移除，并
+     * 返回待保存的消息消费进度（ offset+ 1 ），从中可以看出o ffset 表示消息消费队列的逻辑偏移
+     * 量， 类似于数组的下标，代表第n 个ConsumeQueue 条目。
      * @return
      */
     public long commit() {

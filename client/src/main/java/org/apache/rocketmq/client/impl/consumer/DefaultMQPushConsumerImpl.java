@@ -986,8 +986,22 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * RocketMQ 通过DefaultMQPushConsumerimpl#subscribe (String topic, String fullClassName,
+     * String filterClassSource ）方法来实现基于类模式的消息过滤，其参数分别代表消费组订阅的消
+     * 息主题、类过滤全路径名、类过滤源代码字符串。
+     * @param topic
+     * @param fullClassName
+     * @param filterClassSource
+     * @throws MQClientException
+     */
     public void subscribe(String topic, String fullClassName, String filterClassSource) throws MQClientException {
         try {
+            /**
+             * 构建订问信息， 然后将该订阅信息添加到Rebalancelmpl 中， 其主要目标是
+             * Rebalancelmpl 会对订阅信息表中的主题进行消息队列的负载，创建消息拉取任务，以便
+             * PullMessageService 线程拉取消息。
+             */
             SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(this.defaultMQPushConsumer.getConsumerGroup(),
                 topic, "*");
             subscriptionData.setSubString(fullClassName);

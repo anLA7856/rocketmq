@@ -228,6 +228,8 @@ public class PullAPIWrapper {
 
             String brokerAddr = findBrokerResult.getBrokerAddr();
             if (PullSysFlag.hasClassFilterFlag(sysFlagInner)) {
+                // 在消息拉取时－ ， 如果发现消息过滤模式为classFilter ，将拉取消息服务器地址由
+                //原来的Broker 地址转换成该Broker 服务器所对应的FilterServer
                 brokerAddr = computPullFromWhichFilterServer(mq.getTopic(), brokerAddr);
             }
 
@@ -259,6 +261,14 @@ public class PullAPIWrapper {
 
     private String computPullFromWhichFilterServer(final String topic, final String brokerAddr)
         throws MQClientException {
+        /**
+         * 获取该消息主题的路由信息， 从路由信息中获取Broker 对应的FilterServer 列
+         * 表， 如果不为空则随机从Filt 巳rServer 列表中选择一个FilterServer ，发送拉取消息请求至相
+         * 应的FilterSe rver 上，由于FilterServer 使用DefaultMQPullConsumer 消费者根据消息消费
+         * 者的拉取任务将拉取请求转发给Broker ， 然后对返回的消息执行消息过滤逻辑，将匹配的
+         * 消息返回给消息消费者。DefaultMQPu l!Consumer 拉取机制在第5 章己详细介绍，在这里就
+         * 不再重复介绍了。
+         */
         ConcurrentMap<String, TopicRouteData> topicRouteTable = this.mQClientFactory.getTopicRouteTable();
         if (topicRouteTable != null) {
             TopicRouteData topicRouteData = topicRouteTable.get(topic);

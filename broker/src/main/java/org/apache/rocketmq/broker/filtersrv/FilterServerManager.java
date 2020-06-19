@@ -65,6 +65,7 @@ public class FilterServerManager {
     }
 
     public void createFilterServer() {
+        // 读取配置文件中的属性filterServ erNums ，如果当前运行的Filters srver 进程数 量小于fi lterServerNums 则构建shell 命名并调用。
         int more =
             this.brokerController.getBrokerConfig().getFilterServerNums() - this.filterServerTable.size();
         String cmd = this.buildStartCommand();
@@ -73,6 +74,10 @@ public class FilterServerManager {
         }
     }
 
+    /**
+     * 构建启动命令
+     * @return
+     */
     private String buildStartCommand() {
         String config = "";
         if (BrokerStartup.configFile != null) {

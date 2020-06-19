@@ -466,6 +466,9 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * ：定时将消息端订阅信息中的类过滤模式的过滤类源码上传到FilterServer
+     */
     public void sendHeartbeatToAllBrokerWithLock() {
         if (this.lockHeartbeat.tryLock()) {
             try {
@@ -580,6 +583,10 @@ public class MQClientInstance {
         }
     }
 
+    //根据订阅的主题获取该主题的路由信息，如果该主题路由信息中的FilterServer
+    //缓存表不为空， 则需要将过滤类发送到F ilterServer 上。TopicRouteData 中filterServerTable
+    //缓存表的存储格式为Has hMap< String/* brokerAddr 灯， List<S tring>/ * Filter Server */> ,
+    //FilterServer 是依附于Broker 消息服务器的，多个FilterServer 共同从Broker 上拉取消息。
     private void uploadFilterClassSource() {
         Iterator<Entry<String, MQConsumerInner>> it = this.consumerTable.entrySet().iterator();
         while (it.hasNext()) {
@@ -751,6 +758,8 @@ public class MQClientInstance {
     }
 
     /**
+     *
+     *
      * This method will be removed in the version 5.0.0,because filterServer was removed,and method
      * <code>subscribe(final String topic, final MessageSelector messageSelector)</code> is recommended.
      */
@@ -777,6 +786,8 @@ public class MQClientInstance {
                 Entry<String, List<String>> next = it.next();
                 List<String> value = next.getValue();
                 for (final String fsAddr : value) {
+                    // ：遍历主题路由表中的fiI terServerTab le ，向缓存中所有的F ilterServer 上传消息
+                    //过滤代码。
                     try {
                         this.mQClientAPIImpl.registerMessageFilterClass(fsAddr, consumerGroup, topic, fullClassName, classCRC, classBody,
                             5000);
